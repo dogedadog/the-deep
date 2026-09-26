@@ -46,6 +46,10 @@ namespace TheDeep.Player
                 sprint = keyboard.leftShiftKey.isPressed;
             }
 
+            // If the cursor got released (Esc in the Editor, alt-tab), clicking the game grabs it again.
+            if (!InputLocked && mouse != null && Cursor.lockState != CursorLockMode.Locked && mouse.leftButton.wasPressedThisFrame)
+                SetCursorLocked(true);
+
             if (!InputLocked && mouse != null && Cursor.lockState == CursorLockMode.Locked)
             {
                 Vector2 delta = mouse.delta.ReadValue() * lookSensitivity;

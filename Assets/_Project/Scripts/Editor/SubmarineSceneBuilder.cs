@@ -1,4 +1,4 @@
-﻿using TheDeep.Core.Rendering;
+using TheDeep.Core.Rendering;
 using TheDeep.Player;
 using TheDeep.Submarine;
 using TheDeep.UI.Terminal;
@@ -14,13 +14,14 @@ using UnityEngine.UI;
 namespace TheDeep.EditorTools
 {
     /// <summary>
-    /// Generates the submarine interior scene (greybox room + props, player, terminal).
+    /// Generates the submarine scene: interior (room, props, terminal, player), exterior hull and seafloor.
     /// Menu: The Deep > Build Submarine Scene. Re-running it overwrites the scene.
+    /// Split across partial files: .Details (interior atmosphere) and .Exterior (outside + seafloor).
     ///
-    /// Layout (metres): floor top y=0, ceiling y=2.6, walls at z=Â±1.6 (port = +z),
+    /// Layout (metres): floor top y=0, ceiling y=2.6, walls at z=+/-1.6 (port = +z),
     /// stern wall x=-5 (ladder, dive hatch, lockers), bow wall x=+5 (viewport, winch, terminal).
     /// </summary>
-    public static class SubmarineSceneBuilder
+    public static partial class SubmarineSceneBuilder
     {
         const string ScenePath = "Assets/_Project/Scenes/Submarine.unity";
         const string MaterialFolder = "Assets/_Project/Materials";
@@ -44,11 +45,16 @@ namespace TheDeep.EditorTools
             BuildMidship(Group("Midship_Consoles", sub));
             BuildBow(Group("Bow_Winch", sub));
             BuildTerminal(Group("Terminal", sub));
-            BuildPlayer();
+            BuildInteriorDetails(Group("Details", sub));
+            BuildExterior(Group("Exterior", sub));
+            BuildSeafloor(new GameObject("Environment").transform);
+            var player = BuildPlayer();
+            BuildDevTools(player, sub);
             new GameObject("EventSystem", typeof(EventSystem), typeof(InputSystemUIInputModule));
 
             EditorSceneManager.SaveScene(scene, ScenePath);
             EditorBuildSettings.scenes = new[] { new EditorBuildSettingsScene(ScenePath, true) };
+            EnsureEmissionKeywords();
             AssetDatabase.SaveAssets();
             Debug.Log($"[The Deep] Built {ScenePath}");
         }
@@ -76,7 +82,7 @@ namespace TheDeep.EditorTools
             notePaper = Mat("Sub_NotePaper", null, new Color(0.8f, 0.72f, 0.3f));
             yellowTank = Mat("Sub_TankYellow", null, new Color(0.75f, 0.58f, 0.08f), metallic: 0.3f, smoothness: 0.4f);
             redPaint = Mat("Sub_RedPaint", null, new Color(0.5f, 0.08f, 0.05f), metallic: 0.2f);
-            glassDark = Mat("Sub_PortholeGlass", null, new Color(0.01f, 0.03f, 0.04f), smoothness: 0.9f, emission: new Color(0.01f, 0.05f, 0.07f));
+            glassDark = Mat("Sub_PortholeGlass", null, new Color(0.01f, 0.03f, 0.04f), smoothness: 0.9f, emission: new Color(0.004f, 0.016f, 0.022f));
             gaugeFace = Mat("Sub_GaugeFace", null, new Color(0.8f, 0.78f, 0.65f), emission: new Color(0.25f, 0.24f, 0.18f));
 
             lampOn = Mat("Sub_LampWarm", null, new Color(1f, 0.8f, 0.5f), emission: new Color(1.5f, 1.0f, 0.5f));
@@ -150,12 +156,17 @@ namespace TheDeep.EditorTools
         static void BuildLighting(Transform t)
         {
             RenderSettings.skybox = null;
+            // No sky down here: without this, shiny surfaces reflect Unity's default blue sky.
+            RenderSettings.defaultReflectionMode = DefaultReflectionMode.Custom;
+            RenderSettings.customReflectionTexture = null;
+            RenderSettings.reflectionIntensity = 0f;
             RenderSettings.ambientMode = AmbientMode.Flat;
             RenderSettings.ambientLight = new Color(0.035f, 0.045f, 0.055f);
             RenderSettings.fog = true;
             RenderSettings.fogMode = FogMode.ExponentialSquared;
-            RenderSettings.fogColor = new Color(0.01f, 0.02f, 0.025f);
-            RenderSettings.fogDensity = 0.06f;
+            // Murky deep water. Also applies inside, which gives the cabin a faint haze.
+            RenderSettings.fogColor = new Color(0.01f, 0.035f, 0.045f);
+            RenderSettings.fogDensity = 0.045f;
 
             CeilingLamp(t, new Vector3(-0.5f, 0, 0), shadows: true, flicker: false);
             CeilingLamp(t, new Vector3(2.6f, 0, 0), shadows: true, flicker: false);
@@ -298,7 +309,7 @@ namespace TheDeep.EditorTools
 
         static void BuildBow(Transform t)
         {
-            // Rope winch in the starboard bow corner â€” the divers' tether reel.
+            // Rope winch in the starboard bow corner: the divers' tether reel.
             Box("Winch_Hazard", t, new Vector3(4.2f, 0.004f, -0.95f), new Vector3(1.5f, 0.008f, 1.1f), hazard, collider: false);
             foreach (float x in new[] { 3.65f, 4.75f })
                 Box("Winch_Frame", t, new Vector3(x, 0.5f, -1.1f), new Vector3(0.08f, 1.0f, 0.7f), painted);
@@ -312,8 +323,9 @@ namespace TheDeep.EditorTools
             Cylinder("Rope_ToFloor", t, new Vector3(4.2f, 0.18f, -0.72f), new Vector3(0.035f, 0.26f, 0.035f), rope)
                 .transform.localRotation = Quaternion.Euler(-35, 0, 0);
             Box("FloorSlot", t, new Vector3(4.2f, 0.006f, -0.6f), new Vector3(0.3f, 0.01f, 0.12f), rubber, collider: false, worldUV: false);
-            Stencil("WINCH A - TETHER 01", t, new Vector3(4.2f, 1.6f, -1.575f), Quaternion.Euler(0, 180, 0), 0.07f, new Color(0.9f, 0.85f, 0.7f));
-            Stencil("MAX 120 M", t, new Vector3(4.2f, 1.5f, -1.575f), Quaternion.Euler(0, 180, 0), 0.05f, new Color(0.9f, 0.3f, 0.2f));
+            // Kept between the rib at x=4 and the bow wall so the rib doesn't cover it.
+            Stencil("WINCH A - TETHER 01", t, new Vector3(4.55f, 1.62f, -1.575f), Quaternion.Euler(0, 180, 0), 0.05f, new Color(0.9f, 0.85f, 0.7f));
+            Stencil("MAX 120 M", t, new Vector3(4.55f, 1.52f, -1.575f), Quaternion.Euler(0, 180, 0), 0.05f, new Color(0.9f, 0.3f, 0.2f));
 
             // Filing cabinet in the port bow corner.
             Box("FilingCabinet", t, new Vector3(4.55f, 0.55f, 1.3f), new Vector3(0.55f, 1.1f, 0.55f), locker, worldUV: false);
@@ -400,6 +412,12 @@ namespace TheDeep.EditorTools
             var viewPoint = Group("ViewPoint", root);
             viewPoint.localPosition = new Vector3(0, 1.06f, -0.48f);
 
+            // Generous invisible "use" zone over the desk + monitor so E works from any sensible angle.
+            var useZone = root.gameObject.AddComponent<BoxCollider>();
+            useZone.isTrigger = true;
+            useZone.center = new Vector3(0, 1.25f, -0.05f);
+            useZone.size = new Vector3(1.4f, 1.2f, 0.75f);
+
             var station = root.gameObject.AddComponent<TerminalStation>();
             Assign(station, "viewPoint", viewPoint);
             Assign(station, "os", os);
@@ -407,7 +425,7 @@ namespace TheDeep.EditorTools
 
         // ---------------------------------------------------------------- player
 
-        static void BuildPlayer()
+        static GameObject BuildPlayer()
         {
             var player = new GameObject("Player");
             player.transform.position = new Vector3(-2f, 0.05f, 0);
@@ -426,6 +444,7 @@ namespace TheDeep.EditorTools
             cam.backgroundColor = Color.black;
             cam.nearClipPlane = 0.03f;
             cam.fieldOfView = 70f;
+            UnityEngine.Rendering.Universal.CameraExtensions.GetUniversalAdditionalCameraData(cam).renderPostProcessing = true;
 
             var pixel = camGo.AddComponent<PixelatedCamera>();
             Assign(pixel, "screenMaterial", RetroScreenMaterial());
@@ -434,6 +453,7 @@ namespace TheDeep.EditorTools
             Assign(fpc, "head", head);
             var interactor = player.AddComponent<PlayerInteractor>();
             Assign(interactor, "playerCamera", cam);
+            return player;
         }
 
         static Material RetroScreenMaterial()
@@ -554,10 +574,26 @@ namespace TheDeep.EditorTools
             {
                 mat.EnableKeyword("_EMISSION");
                 mat.SetColor("_EmissionColor", emission.Value);
-                mat.globalIlluminationFlags = MaterialGlobalIlluminationFlags.None;
+                mat.globalIlluminationFlags = MaterialGlobalIlluminationFlags.RealtimeEmissive;
             }
             EditorUtility.SetDirty(mat);
             return mat;
+        }
+
+        /// <summary>
+        /// Safety net: URP re-validates materials and turns _EMISSION off unless the GI flags say
+        /// the material is emissive, so make sure every material with a glow colour has both.
+        /// </summary>
+        static void EnsureEmissionKeywords()
+        {
+            foreach (string guid in AssetDatabase.FindAssets("t:Material", new[] { MaterialFolder }))
+            {
+                var mat = AssetDatabase.LoadAssetAtPath<Material>(AssetDatabase.GUIDToAssetPath(guid));
+                if (!mat.HasProperty("_EmissionColor") || mat.GetColor("_EmissionColor").maxColorComponent <= 0.001f) continue;
+                mat.EnableKeyword("_EMISSION");
+                mat.globalIlluminationFlags = MaterialGlobalIlluminationFlags.RealtimeEmissive;
+                EditorUtility.SetDirty(mat);
+            }
         }
 
         static GameObject Box(string name, Transform parent, Vector3 pos, Vector3 scale, Material mat, bool collider = true, bool worldUV = true)
@@ -619,6 +655,13 @@ namespace TheDeep.EditorTools
         {
             var so = new SerializedObject(component);
             so.FindProperty(field).floatValue = value;
+            so.ApplyModifiedPropertiesWithoutUndo();
+        }
+
+        static void Assign(Component component, string field, Vector3 value)
+        {
+            var so = new SerializedObject(component);
+            so.FindProperty(field).vector3Value = value;
             so.ApplyModifiedPropertiesWithoutUndo();
         }
     }

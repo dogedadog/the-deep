@@ -136,6 +136,38 @@ namespace TheDeep.EditorTools
             return c;
         });
 
+        public static Texture2D HullExterior() => Save("T_HullExterior", () =>
+        {
+            var c = new Pixels(111, new Color(0.62f, 0.34f, 0.1f));
+            c.Stains(16, 5, 16, 0.25f);
+            c.Stains(10, 3, 9, -0.5f, new Color(0.3f, 0.16f, 0.07f));
+            c.Scratches(30, new Color(0.35f, 0.33f, 0.3f));
+            c.Noise(0.07f);
+            c.Seams(0, 0);
+            c.Rivets(3, 8);
+            c.RustStreaks(6, new Color(0.25f, 0.12f, 0.05f));
+            return c;
+        });
+
+        public static Texture2D Silt() => Save("T_Silt", () =>
+        {
+            var c = new Pixels(121, new Color(0.26f, 0.27f, 0.24f));
+            c.Stains(30, 3, 12, 0.18f);
+            c.Stains(20, 1, 3, -0.4f, new Color(0.4f, 0.4f, 0.36f));
+            c.Noise(0.12f);
+            return c;
+        });
+
+        public static Texture2D Rock() => Save("T_Rock", () =>
+        {
+            var c = new Pixels(131, new Color(0.2f, 0.2f, 0.21f));
+            c.Stains(24, 2, 10, 0.3f);
+            c.Stains(12, 2, 6, -0.3f, new Color(0.3f, 0.32f, 0.28f));
+            c.Scratches(40, new Color(0.08f, 0.08f, 0.08f));
+            c.Noise(0.15f);
+            return c;
+        });
+
         static Texture2D Save(string name, Func<Pixels> generate)
         {
             Directory.CreateDirectory(Folder);

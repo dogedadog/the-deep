@@ -59,6 +59,9 @@ namespace TheDeep.Submarine
             Transform cam = leaving.Camera.transform;
             StartCoroutine(MoveCamera(cam, () => new Pose(cam.parent.position, cam.parent.rotation), () =>
             {
+                // Lock again once the move is done: in the Editor, the Esc press that got us here
+                // also releases the cursor on that same frame, undoing the lock above.
+                FirstPersonController.SetCursorLocked(true);
                 cam.localPosition = Vector3.zero;
                 cam.localRotation = Quaternion.identity;
                 leaving.Controller.InputLocked = false;

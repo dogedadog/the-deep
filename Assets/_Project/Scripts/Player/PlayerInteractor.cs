@@ -11,7 +11,8 @@ namespace TheDeep.Player
     public class PlayerInteractor : MonoBehaviour
     {
         [SerializeField] Camera playerCamera;
-        [SerializeField] float range = 2.2f;
+        [SerializeField] float range = 2.5f;
+        [SerializeField] float aimRadius = 0.12f;
 
         GameObject crosshair;
         Text prompt;
@@ -42,7 +43,8 @@ namespace TheDeep.Player
             crosshair.SetActive(true);
             IInteractable target = null;
             Transform cam = playerCamera.transform;
-            if (Physics.Raycast(cam.position, cam.forward, out RaycastHit hit, range, ~0, QueryTriggerInteraction.Collide))
+            // A thick ray, so you don't have to aim at the exact pixel of an object.
+            if (Physics.SphereCast(cam.position, aimRadius, cam.forward, out RaycastHit hit, range, ~0, QueryTriggerInteraction.Collide))
                 target = hit.collider.GetComponentInParent<IInteractable>();
 
             if (target != null && target.CanInteract(this))
