@@ -134,6 +134,10 @@ namespace TheDeep.EditorTools
             AssignArray(net, "bodyRenderers", Renderers(torso, armL, armR, tank, helmet, visor, lampHousing));
             AssignArray(net, "ownerOnly", new Object[] { fpc, interactor });
 
+            var scanner = player.AddComponent<DiverScanner>();
+            Assign(scanner, "head", head);
+            Assign(scanner, "beamMaterial", Mat("Scanner_Beam", null, new Color(0.4f, 0.95f, 1f), emission: new Color(0.6f, 2f, 2.4f)));
+
             System.IO.Directory.CreateDirectory("Assets/_Project/Prefabs");
             var prefab = PrefabUtility.SaveAsPrefabAsset(player, PlayerPrefabPath);
             Object.DestroyImmediate(player);

@@ -155,8 +155,8 @@ namespace TheDeep.Player
 
         // ------------------------------------------------------------------ HUD
 
-        /// <summary>Extra lines other systems can show on the diver HUD (e.g. the tether).</summary>
-        public Func<string> HudExtra;
+        /// <summary>Extra lines other systems add to the diver HUD (tether, scanner...).</summary>
+        public readonly System.Collections.Generic.List<Func<string>> HudLines = new();
 
         void BuildHud()
         {
@@ -175,7 +175,7 @@ namespace TheDeep.Player
             var rt = (RectTransform)go.transform;
             rt.anchorMin = rt.anchorMax = rt.pivot = Vector2.zero;
             rt.anchoredPosition = new Vector2(28, 24);
-            rt.sizeDelta = new Vector2(700, 160);
+            rt.sizeDelta = new Vector2(1200, 180);
             hud = go.GetComponent<Text>();
             hud.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
             hud.fontSize = 22;
@@ -191,9 +191,14 @@ namespace TheDeep.Player
             if (hud == null) return;
             Vector3 f = head.forward;
             float heading = Mathf.Repeat(Mathf.Atan2(f.x, f.z) * Mathf.Rad2Deg, 360f);
-            string extra = HudExtra != null ? "\n" + HudExtra() : "";
+            string extra = "";
+            foreach (var line in HudLines)
+            {
+                string text = line();
+                if (!string.IsNullOrEmpty(text)) extra += "\n" + text;
+            }
             hud.text = $"DEPTH {WorldInfo.DepthAt(transform.position.y):0000.0} M    HDG {heading:000}°    SPD {rb.linearVelocity.magnitude:0.0} M/S{extra}\n" +
-                       "<size=15>WASD swim   SPACE/CTRL up/down   SHIFT fast   E under the hatch to climb aboard</size>";
+                       "<size=15>WASD swim   SPACE/CTRL up/down   SHIFT fast   HOLD LMB scan   T transmit   E under the hatch to climb aboard</size>";
         }
     }
 }

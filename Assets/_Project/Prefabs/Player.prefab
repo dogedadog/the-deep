@@ -668,6 +668,7 @@ GameObject:
   - component: {fileID: 4362920364178127192}
   - component: {fileID: 3472170462637441901}
   - component: {fileID: 7813017675619623810}
+  - component: {fileID: 37530401937247281}
   m_Layer: 0
   m_Name: Player
   m_TagString: Untagged
@@ -944,6 +945,22 @@ MonoBehaviour:
   ownerOnly:
   - {fileID: 1639439474774529978}
   - {fileID: 4188928295082199067}
+--- !u!114 &37530401937247281
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5885648116558041882}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2c09bf4a88614ab41a0975297299daa2, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::TheDeep.Player.DiverScanner
+  ShowTopMostFoldoutHeaderGroup: 1
+  head: {fileID: 4384382696330580550}
+  range: 9
+  beamMaterial: {fileID: 2100000, guid: 20b5ceeff62ab1949b82027f3fd02539, type: 2}
 --- !u!1 &5939024039418103475
 GameObject:
   m_ObjectHideFlags: 0

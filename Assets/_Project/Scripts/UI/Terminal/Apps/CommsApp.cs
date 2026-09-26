@@ -1,34 +1,179 @@
+using System.Collections.Generic;
+using TheDeep.Data;
 using UnityEngine;
+using UnityEngine.UI;
 
 namespace TheDeep.UI.Terminal.Apps
 {
-    /// <summary>Placeholder: where divers' radioed-in data packets will be logged and submitted (step 3).</summary>
+    /// <summary>
+    /// Where divers' radioed-in data lands. The crew must LOG each packet (REPAIR corrupted ones,
+    /// which takes longer), then SUBMIT logged data for credits. Shared by everyone via ExpeditionState.
+    /// </summary>
     public class CommsApp : TerminalApp
     {
+        const int Rows = 7;
+        const float RowHeight = 38f;
+
+        readonly Row[] rows = new Row[Rows];
+        readonly List<DataPacket> visible = new();
+        Text status, summary, empty;
+        Button submit;
+        bool open;
+        float nextRefresh;
+
         public override string Title => "Comms / Data";
         public override string IconGlyph => "((o))";
         public override Color IconColor => new(0.55f, 0.35f, 0.15f);
-        public override Vector2 WindowSize => new(600, 420);
+        public override Vector2 WindowSize => new(640, 420);
+
+        class Row
+        {
+            public GameObject Root;
+            public Text Label, State;
+            public Image Bar;
+            public Button Action;
+            public Text ActionText;
+            public int PacketId;
+        }
 
         public override void BuildContent(RectTransform content)
         {
-            var status = RetroUI.Label("Status", content, "CHANNEL 1  |  WALKIE LINK: IDLE  |  PACKETS PENDING: 0", 15);
-            RetroUI.Place(status.rectTransform, 0, 0, WindowSize.x - 16, 24);
+            float width = WindowSize.x - 16;
+            status = RetroUI.Label("Status", content, "", 15, style: FontStyle.Bold);
+            RetroUI.Place(status.rectTransform, 0, 0, width, 22);
 
-            var log = RetroUI.Readout("Log", content,
-                $"[{RetroUI.Timestamp()}] {TerminalOS.OsName} DATA LINK READY\n" +
-                "> Awaiting transmissions from dive team...\n" +
-                "> No divers deployed.\n\n" +
-                "_", 15);
-            RetroUI.Stretch((RectTransform)log.transform.parent, 0, 30, 0, 50);
+            var list = RetroUI.Panel("List", content, RetroUI.Screen);
+            RetroUI.Place(list.rectTransform, 0, 26, width, Rows * RowHeight + 8);
+            RetroUI.Bevel(list.rectTransform, raised: false);
+            for (int i = 0; i < Rows; i++) rows[i] = BuildRow(list.transform, i, width - 8);
+            empty = RetroUI.Label("Empty", list.transform,
+                "> Awaiting transmissions from dive team...\n> Divers: scan with LEFT MOUSE, transmit with T.", 15, RetroUI.PhosphorDim, TextAnchor.UpperLeft);
+            RetroUI.Stretch(empty.rectTransform, 12, 10, 12, 10);
 
-            var logButton = RetroUI.DisabledButton("LogPacket", content, "LOG PACKET");
-            var submit = RetroUI.DisabledButton("Submit", content, "SUBMIT DATA");
-            var lr = logButton.GetComponent<RectTransform>();
-            var sr = submit.GetComponent<RectTransform>();
-            lr.anchorMin = lr.anchorMax = lr.pivot = new Vector2(0, 0);
-            sr.anchorMin = sr.anchorMax = sr.pivot = new Vector2(1, 0);
-            lr.sizeDelta = sr.sizeDelta = new Vector2(170, 36);
+            float y = 26 + Rows * RowHeight + 16;
+            summary = RetroUI.Label("Summary", content, "", 15);
+            RetroUI.Place(summary.rectTransform, 0, y, width - 230, 40);
+            submit = RetroUI.Button("Submit", content, "SUBMIT LOGGED DATA", () => ExpeditionState.Instance?.SubmitRpc(), 16);
+            RetroUI.Place(submit.GetComponent<RectTransform>(), width - 220, y, 220, 40);
+            Refresh();
+        }
+
+        Row BuildRow(Transform parent, int index, float width)
+        {
+            var row = new Row();
+            var bg = RetroUI.Panel("Row" + index, parent, new Color(1, 1, 1, index % 2 == 0 ? 0.03f : 0f));
+            RetroUI.Place(bg.rectTransform, 4, 4 + index * RowHeight, width, RowHeight - 2);
+            row.Root = bg.gameObject;
+
+            row.Bar = RetroUI.Panel("Progress", bg.transform, new Color(0.2f, 0.8f, 0.35f, 0.25f));
+            RetroUI.Place(row.Bar.rectTransform, 0, 0, 0, RowHeight - 2);
+            row.Label = RetroUI.Label("Label", bg.transform, "", 15, RetroUI.Phosphor);
+            RetroUI.Place(row.Label.rectTransform, 8, 0, width - 250, RowHeight - 2);
+            row.State = RetroUI.Label("State", bg.transform, "", 14, RetroUI.Phosphor, TextAnchor.MiddleRight, FontStyle.Bold);
+            RetroUI.Place(row.State.rectTransform, width - 240, 0, 130, RowHeight - 2);
+
+            row.Action = RetroUI.Button("Action", bg.transform, "LOG", () =>
+            {
+                if (ExpeditionState.Instance != null) ExpeditionState.Instance.LogPacketRpc(row.PacketId);
+            }, 14);
+            RetroUI.Place(row.Action.GetComponent<RectTransform>(), width - 100, 4, 94, RowHeight - 10);
+            row.ActionText = row.Action.GetComponentInChildren<Text>();
+            return row;
+        }
+
+        public override void OnOpened() => open = true;
+        public override void OnClosed() => open = false;
+
+        void Update()
+        {
+            if (!open || status == null) return;
+            // Progress bars move smoothly; the rest only needs a few refreshes a second.
+            if (Time.time >= nextRefresh)
+            {
+                nextRefresh = Time.time + 0.2f;
+                Refresh();
+            }
+            UpdateProgressBars();
+        }
+
+        void Refresh()
+        {
+            var state = ExpeditionState.Instance;
+            visible.Clear();
+            int pending = 0, logged = 0, loggedValue = 0;
+            if (state != null && state.IsSpawned)
+            {
+                // Newest first, skipping what's already been submitted.
+                for (int i = state.Packets.Count - 1; i >= 0; i--)
+                {
+                    var p = state.Packets[i];
+                    if (p.Status == PacketStatus.Submitted) continue;
+                    if (p.Status == PacketStatus.Logged) { logged++; loggedValue += p.Value; }
+                    else pending++;
+                    if (visible.Count < Rows) visible.Add(p);
+                }
+            }
+
+            bool online = state != null && state.IsSpawned;
+            status.text = online
+                ? $"CHANNEL 1  |  AWAITING LOG: {pending}  |  LOGGED: {logged}  |  CREDITS: {state.Credits} CR"
+                : "DATA LINK OFFLINE";
+            empty.gameObject.SetActive(visible.Count == 0);
+
+            for (int i = 0; i < Rows; i++)
+            {
+                var row = rows[i];
+                bool show = i < visible.Count;
+                row.Root.SetActive(show);
+                if (!show) continue;
+                var p = visible[i];
+                row.PacketId = p.Id;
+                row.Label.text = $"[D{p.Diver}] {p.Title}  {ScanTarget.ClassFor(p.Value)}  {p.Value} CR";
+                (string text, Color color, string action) info = p.Status switch
+                {
+                    PacketStatus.Pending => ("RECEIVED", RetroUI.Phosphor, "LOG"),
+                    PacketStatus.Corrupted => ("CORRUPTED", new Color(1f, 0.4f, 0.3f), "REPAIR"),
+                    PacketStatus.Logging => ("LOGGING...", new Color(1f, 0.85f, 0.3f), null),
+                    PacketStatus.Repairing => ("REPAIRING...", new Color(1f, 0.6f, 0.3f), null),
+                    _ => ("LOGGED", new Color(0.5f, 1f, 0.6f), null),
+                };
+                row.State.text = info.text;
+                row.State.color = info.color;
+                row.Action.gameObject.SetActive(info.action != null);
+                if (info.action != null) row.ActionText.text = info.action;
+                // Corrupted data shows as garbled until repaired.
+                if (p.Status == PacketStatus.Corrupted || p.Status == PacketStatus.Repairing)
+                    row.Label.text = Garble(row.Label.text, p.Id);
+            }
+
+            submit.interactable = logged > 0;
+            summary.text = online
+                ? $"READY TO SUBMIT: {logged} PACKET(S) = {loggedValue} CR\nSUBMITTED THIS EXPEDITION: {state.SubmittedCount}"
+                : "";
+        }
+
+        void UpdateProgressBars()
+        {
+            var state = ExpeditionState.Instance;
+            float width = WindowSize.x - 24;
+            for (int i = 0; i < visible.Count && i < Rows; i++)
+            {
+                var p = visible[i];
+                float fill = p.Status is PacketStatus.Logging or PacketStatus.Repairing && state != null ? state.Progress(p)
+                    : p.Status == PacketStatus.Logged ? 1f : 0f;
+                rows[i].Bar.rectTransform.sizeDelta = new Vector2(width * fill, RowHeight - 2);
+            }
+        }
+
+        /// <summary>Replaces some characters with noise, deterministically per packet.</summary>
+        static string Garble(string text, int seed)
+        {
+            var chars = text.ToCharArray();
+            var rng = new System.Random(seed);
+            const string noise = "#%&@?/\\|=+*";
+            for (int i = 0; i < chars.Length; i++)
+                if (chars[i] != ' ' && rng.NextDouble() < 0.35) chars[i] = noise[rng.Next(noise.Length)];
+            return new string(chars);
         }
     }
 }

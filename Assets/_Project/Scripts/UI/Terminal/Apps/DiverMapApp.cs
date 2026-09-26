@@ -19,6 +19,8 @@ namespace TheDeep.UI.Terminal.Apps
         const float PixelsPerMeter = MapSize / MetersAcross;
 
         readonly Dictionary<DiverController, (RectTransform blip, Text label)> blips = new();
+        readonly Button[] winchButtons = new Button[5];
+        readonly DiverController[] winchTargets = new DiverController[5];
         RectTransform map;
         Text info;
         bool open;
@@ -28,7 +30,7 @@ namespace TheDeep.UI.Terminal.Apps
         public override string Title => "Diver Map";
         public override string IconGlyph => "MAP";
         public override Color IconColor => new(0.15f, 0.45f, 0.25f);
-        public override Vector2 WindowSize => new(640, 460);
+        public override Vector2 WindowSize => new(640, 510);
 
         public override void BuildContent(RectTransform content)
         {
@@ -73,6 +75,17 @@ namespace TheDeep.UI.Terminal.Apps
 
             info = RetroUI.Readout("Info", content, "", 14);
             RetroUI.Place((RectTransform)info.transform.parent, MapSize + 10, 0, WindowSize.x - 16 - MapSize - 10, MapSize);
+
+            // Winch controls: the crew can reel any diver back in.
+            var winchLabel = RetroUI.Label("WinchLabel", content, "WINCH", 15, style: FontStyle.Bold);
+            RetroUI.Place(winchLabel.rectTransform, 0, MapSize + 12, 70, 34);
+            for (int i = 0; i < winchButtons.Length; i++)
+            {
+                int slot = i;
+                winchButtons[i] = RetroUI.Button("Winch" + i, content, "", () => ToggleWinch(slot), 13);
+                RetroUI.Place(winchButtons[i].GetComponent<RectTransform>(), 72 + i * 110, MapSize + 12, 104, 34);
+                winchButtons[i].gameObject.SetActive(false);
+            }
             Refresh();
         }
 
@@ -119,8 +132,8 @@ namespace TheDeep.UI.Terminal.Apps
                 label.rectTransform.anchoredPosition = pos + new Vector2(0, 14);
                 label.text = $"D{net.CrewNumber}";
 
-                // Placeholder signal model until the walkie-talkie step: fades past ~25 m.
-                float signal = Mathf.Clamp01(1f - (dist - 25f) / 60f);
+                float signal = SignalModel.Strength(diver.transform.position);
+                var scanner = diver.GetComponent<DiverScanner>();
                 string tetherText = tether != null && tether.HasRope
                     ? $"{tether.PaidOut:0}/{tether.MaxLength:0} M  T{tether.Tension * 100f:0}%{(tether.IsReeling ? " REEL" : "")}"
                     : "NONE";
@@ -128,17 +141,43 @@ namespace TheDeep.UI.Terminal.Apps
                 sb.Append($" DEPTH  {WorldInfo.DepthAt(diver.transform.position.y):0000} M\n");
                 sb.Append($" RANGE  {dist:0} M\n");
                 sb.Append($" TETHER {tetherText}\n");
-                sb.Append($" SIGNAL {Bars(signal)} {signal * 100f:0}%\n\n");
+                sb.Append($" SIGNAL {SignalModel.Bars(signal)} {signal * 100f:0}%\n");
+                sb.Append($" DATA   {(scanner != null ? scanner.HeldCount : 0)} PKT HELD\n\n");
             }
 
+            UpdateWinchButtons();
             info.text = $"DIVERS OUT: {deployed}\nSUB DEPTH: {WorldInfo.SurfaceDepth:0} M\n\n" +
                         (deployed == 0 ? "-- NO DIVERS DEPLOYED --\n\nDive hatch is at the stern." : sb.ToString());
         }
 
-        static string Bars(float v)
+        void UpdateWinchButtons()
         {
-            int n = Mathf.RoundToInt(v * 5f);
-            return new string('|', n) + new string('.', 5 - n);
+            int slot = 0;
+            foreach (var diver in divers)
+            {
+                if (slot >= winchButtons.Length) break;
+                if (diver == null || !diver.IsDiving) continue;
+                var tether = diver.GetComponent<DiverTether>();
+                if (tether == null) continue;
+                winchTargets[slot] = diver;
+                var button = winchButtons[slot];
+                button.gameObject.SetActive(true);
+                button.GetComponentInChildren<Text>().text = $"D{diver.GetComponent<PlayerNetwork>().CrewNumber} {(tether.IsReeling ? "STOP" : "REEL IN")}";
+                button.targetGraphic.color = tether.IsReeling ? new Color(1f, 0.75f, 0.4f) : RetroUI.Face;
+                slot++;
+            }
+            for (; slot < winchButtons.Length; slot++)
+            {
+                winchTargets[slot] = null;
+                winchButtons[slot].gameObject.SetActive(false);
+            }
+        }
+
+        void ToggleWinch(int slot)
+        {
+            var diver = winchTargets[slot];
+            var tether = diver != null ? diver.GetComponent<DiverTether>() : null;
+            if (tether != null) tether.SetWinchRpc(!tether.IsReeling);
         }
 
         (RectTransform, Text) BlipFor(DiverController diver)

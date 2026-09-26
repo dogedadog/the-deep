@@ -43,8 +43,12 @@ namespace TheDeep.Player
         {
             diver.DivingChanged += OnDivingChanged;
             if (diver.IsDiving) OnDivingChanged(true);
-            if (IsOwner) diver.HudExtra = HudLine;
+            if (IsOwner) diver.HudLines.Add(HudLine);
         }
+
+        /// <summary>Sub crew's winch control (Diver Map app): anyone can ask the diver's client to reel in.</summary>
+        [Rpc(SendTo.Owner)]
+        public void SetWinchRpc(bool reelIn) => WinchReelIn = reelIn;
 
         public override void OnNetworkDespawn()
         {
@@ -56,6 +60,7 @@ namespace TheDeep.Player
         {
             if (!inWater)
             {
+                WinchReelIn = false;
                 DestroyRope();
                 return;
             }

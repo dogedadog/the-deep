@@ -47,11 +47,24 @@ namespace TheDeep.EditorTools
             BuildInteriorDetails(Group("Details", sub));
             BuildExterior(Group("Exterior", sub));
             BuildSeafloor(new GameObject("Environment").transform);
+            BuildPointsOfInterest(new GameObject("PointsOfInterest").transform);
+            BuildExpeditionState();
             BuildSpawnPoints(Group("SpawnPoints", sub));
             var menuCamera = BuildDevTools(sub);
             BuildNetworking(BuildPlayerPrefab(), menuCamera);
             new GameObject("EventSystem", typeof(EventSystem), typeof(InputSystemUIInputModule));
 
+            EditorSceneManager.SaveScene(scene, ScenePath);
+            // Networked objects placed in the scene get their network ID from their place in the saved
+            // scene file, so it can only be generated after the first save. Generate, then save again.
+            var validate = typeof(Unity.Netcode.NetworkObject).GetMethod("OnValidate",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            foreach (var networkObject in Object.FindObjectsByType<Unity.Netcode.NetworkObject>(FindObjectsSortMode.None))
+            {
+                validate?.Invoke(networkObject, null);
+                EditorUtility.SetDirty(networkObject);
+            }
+            EditorSceneManager.MarkSceneDirty(scene);
             EditorSceneManager.SaveScene(scene, ScenePath);
             EditorBuildSettings.scenes = new[] { new EditorBuildSettingsScene(ScenePath, true) };
             EnsureEmissionKeywords();
