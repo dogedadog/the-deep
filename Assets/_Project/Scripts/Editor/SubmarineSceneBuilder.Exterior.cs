@@ -117,6 +117,15 @@ namespace TheDeep.EditorTools
             // Tether fairlead under the winch, where the divers' rope will leave the sub.
             Cylinder("TetherFairlead", t, new Vector3(4.2f, -0.95f, -0.6f), new Vector3(0.3f, 0.15f, 0.3f), darkMetal);
 
+            // Hull cameras, viewable from the terminal's camera app.
+            var cams = Group("HullCameras", t);
+            HullCamera(cams, darkMetal, 1, "BOW", new Vector3(7.35f, 2.9f, 0f), new Vector3(15f, -1.5f, 0f), light: true);
+            HullCamera(cams, darkMetal, 2, "KEEL / DIVE HATCH", new Vector3(-1.6f, -1.4f, 0.3f), new Vector3(-4.5f, -6f, 0f), light: false);
+            HullCamera(cams, darkMetal, 3, "SAIL / AFT", new Vector3(-0.35f, 5.5f, 0f), new Vector3(-9f, 1.5f, 0f), light: true);
+            HullCamera(cams, darkMetal, 4, "STARBOARD", new Vector3(4.6f, 2.4f, -2.45f), new Vector3(-6f, 1.2f, -3.2f), light: true);
+            HullCamera(cams, darkMetal, 5, "WINCH / TETHER", new Vector3(5.3f, -1.0f, -1.6f), new Vector3(3.8f, -3.5f, -0.3f), light: true);
+            HullCamera(cams, darkMetal, 6, "AFT / PROPELLER", new Vector3(-6.4f, 3.9f, 1.5f), new Vector3(-9.3f, 1.0f, -0.4f), light: true);
+
             // Hull shell and its parts shouldn't throw shadows onto the interior lights' surfaces.
             foreach (var r in t.GetComponentsInChildren<Renderer>())
                 r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
@@ -250,6 +259,41 @@ namespace TheDeep.EditorTools
             shape.shapeType = ParticleSystemShapeType.Sphere;
             shape.radius = 24f;
             shape.radiusThickness = 0.7f; // emit in a shell, so none spawn inside the cabin
+        }
+
+        /// <summary>
+        /// A small camera housing with a lens and red tally light, plus the (disabled) Camera itself,
+        /// aimed at <paramref name="lookAt"/>. Cameras without nearby sub lights get their own lamp.
+        /// </summary>
+        static void HullCamera(Transform t, Material housing, int number, string label, Vector3 pos, Vector3 lookAt, bool light)
+        {
+            Quaternion rot = Quaternion.LookRotation(lookAt - pos);
+            var rig = Group($"Cam{number:00}_{label}", t);
+            rig.localPosition = pos;
+            rig.localRotation = rot;
+
+            Box("Housing", rig, new Vector3(0, 0, -0.1f), new Vector3(0.16f, 0.13f, 0.26f), housing, collider: false, worldUV: false);
+            Box("Mount", rig, new Vector3(0, -0.1f, -0.12f), new Vector3(0.05f, 0.1f, 0.05f), housing, collider: false, worldUV: false);
+            Cylinder("Lens", rig, new Vector3(0, 0, 0.04f), new Vector3(0.1f, 0.02f, 0.1f), glassDark).transform.localRotation = Quaternion.Euler(90, 0, 0);
+            var tally = Sphere("TallyLight", rig, new Vector3(0.05f, 0.05f, 0.03f), 0.025f, lampRed);
+
+            var camGo = new GameObject("Camera", typeof(Camera));
+            camGo.transform.SetParent(rig, false);
+            camGo.transform.localPosition = new Vector3(0, 0, 0.07f);
+            var cam = camGo.GetComponent<Camera>();
+            cam.enabled = false;
+            cam.fieldOfView = 78f;
+            cam.nearClipPlane = 0.05f;
+            cam.farClipPlane = 60f;
+            cam.clearFlags = CameraClearFlags.SolidColor;
+            cam.backgroundColor = RenderSettings.fogColor;
+            var subCam = camGo.AddComponent<SubCamera>();
+            Assign(subCam, "number", number);
+            Assign(subCam, "label", label);
+            Assign(subCam, "tallyLight", tally.GetComponent<Renderer>());
+
+            if (light)
+                SpotLight("CamLight", rig, new Vector3(0, 0.1f, 0f), Quaternion.identity, new Color(0.85f, 0.92f, 1f), 22f, 20f, 60f);
         }
 
         static void SpotLight(string name, Transform parent, Vector3 pos, Quaternion rot, Color color, float intensity, float range, float angle)

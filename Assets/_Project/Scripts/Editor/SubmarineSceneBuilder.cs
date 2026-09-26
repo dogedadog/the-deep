@@ -25,7 +25,6 @@ namespace TheDeep.EditorTools
     {
         const string ScenePath = "Assets/_Project/Scenes/Submarine.unity";
         const string MaterialFolder = "Assets/_Project/Materials";
-        const string RetroScreenMaterialPath = MaterialFolder + "/M_RetroScreen.mat";
 
         // Materials shared by the build helpers.
         static Material hull, hullDark, floor, grating, rust, hazard, painted, beige, wood, locker, cork;
@@ -404,6 +403,8 @@ namespace TheDeep.EditorTools
             // Apps appear on the desktop in this order.
             screenGo.AddComponent<CommsApp>();
             screenGo.AddComponent<DiverMapApp>();
+            var cameras = screenGo.AddComponent<CamerasApp>();
+            Assign(cameras, "feedMaterial", ShaderMaterial("M_CCTVFeed", "TheDeep/CCTVFeed"));
             screenGo.AddComponent<BalanceApp>();
             var os = screenGo.AddComponent<TerminalOS>();
 
@@ -456,13 +457,17 @@ namespace TheDeep.EditorTools
             return player;
         }
 
-        static Material RetroScreenMaterial()
+        static Material RetroScreenMaterial() => ShaderMaterial("M_RetroScreen", "TheDeep/RetroScreen");
+
+        /// <summary>Material asset for one of our custom shaders (created once, then reused).</summary>
+        static Material ShaderMaterial(string name, string shader)
         {
-            var mat = AssetDatabase.LoadAssetAtPath<Material>(RetroScreenMaterialPath);
+            string path = $"{MaterialFolder}/{name}.mat";
+            var mat = AssetDatabase.LoadAssetAtPath<Material>(path);
             if (mat == null)
             {
-                mat = new Material(Shader.Find("TheDeep/RetroScreen"));
-                AssetDatabase.CreateAsset(mat, RetroScreenMaterialPath);
+                mat = new Material(Shader.Find(shader));
+                AssetDatabase.CreateAsset(mat, path);
             }
             return mat;
         }
@@ -655,6 +660,20 @@ namespace TheDeep.EditorTools
         {
             var so = new SerializedObject(component);
             so.FindProperty(field).floatValue = value;
+            so.ApplyModifiedPropertiesWithoutUndo();
+        }
+
+        static void Assign(Component component, string field, int value)
+        {
+            var so = new SerializedObject(component);
+            so.FindProperty(field).intValue = value;
+            so.ApplyModifiedPropertiesWithoutUndo();
+        }
+
+        static void Assign(Component component, string field, string value)
+        {
+            var so = new SerializedObject(component);
+            so.FindProperty(field).stringValue = value;
             so.ApplyModifiedPropertiesWithoutUndo();
         }
 

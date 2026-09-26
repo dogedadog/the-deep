@@ -56,8 +56,10 @@ namespace TheDeep.UI.Terminal
         public void Open(TerminalApp app)
         {
             startMenu.SetActive(false);
+            bool created = false;
             if (!windows.TryGetValue(app, out TerminalWindow window))
             {
+                created = true;
                 var offset = new Vector2(-60 + cascade * 30, 40 - cascade * 30);
                 cascade = (cascade + 1) % 5;
                 window = TerminalWindow.Create(app, windowLayer, offset);
@@ -67,7 +69,7 @@ namespace TheDeep.UI.Terminal
                 windows[app] = window;
             }
 
-            if (!window.gameObject.activeSelf)
+            if (created || !window.gameObject.activeSelf)
             {
                 window.gameObject.SetActive(true);
                 app.OnOpened();
