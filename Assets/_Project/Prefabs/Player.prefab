@@ -1111,7 +1111,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: d2865d575691fb4458af77c87059a4cc, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::TheDeep.Core.Rendering.PixelatedCamera
-  pixelHeight: 360
   screenMaterial: {fileID: 2100000, guid: e45e85110f58e394fa6729465a222e2f, type: 2}
   colorLevels: 40
   ditherStrength: 1

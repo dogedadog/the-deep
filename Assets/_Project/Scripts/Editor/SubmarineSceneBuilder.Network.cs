@@ -170,7 +170,7 @@ namespace TheDeep.EditorTools
             go.GetComponent<UnityTransport>().MaxPacketQueueSize = 512;
 
             new GameObject("SessionManager", typeof(SessionManager));
-            var menu = new GameObject("ConnectionMenu").AddComponent<ConnectionMenu>();
+            var menu = new GameObject("ConnectionMenu", typeof(TheDeep.Core.SettingsRuntime)).AddComponent<ConnectionMenu>();
             Assign(menu, "menuCamera", menuCamera);
 
             PlayerSettings.runInBackground = true;

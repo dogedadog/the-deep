@@ -327,6 +327,9 @@ namespace TheDeep.EditorTools
             var vignette = profile.Add<Vignette>(true);
             vignette.intensity.Override(0.38f);
             vignette.smoothness.Override(0.5f);
+            // Brightness setting drives post exposure at runtime (see SettingsRuntime).
+            var color = profile.Add<ColorAdjustments>(true);
+            color.postExposure.Override(0f);
             var grain = profile.Add<FilmGrain>(true);
             grain.type.Override(FilmGrainLookup.Thin2);
             grain.intensity.Override(0.3f);

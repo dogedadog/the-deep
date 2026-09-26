@@ -1,3 +1,4 @@
+using TheDeep.Core;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
@@ -52,7 +53,7 @@ namespace TheDeep.Player
 
             if (!InputLocked && mouse != null && Cursor.lockState == CursorLockMode.Locked)
             {
-                Vector2 delta = mouse.delta.ReadValue() * lookSensitivity;
+                Vector2 delta = GameSettings.AdjustLook(mouse.delta.ReadValue()) * lookSensitivity;
                 transform.Rotate(0f, delta.x, 0f);
                 pitch = Mathf.Clamp(pitch - delta.y, -85f, 85f);
                 head.localEulerAngles = new Vector3(pitch, 0f, 0f);

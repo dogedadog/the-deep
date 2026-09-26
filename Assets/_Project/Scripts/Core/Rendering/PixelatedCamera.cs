@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityEngine.UI;
+using TheDeep.Core;
 
 namespace TheDeep.Core.Rendering
 {
@@ -12,8 +13,6 @@ namespace TheDeep.Core.Rendering
     [RequireComponent(typeof(Camera))]
     public class PixelatedCamera : MonoBehaviour
     {
-        [SerializeField, Tooltip("Vertical resolution of the game image. Lower = chunkier pixels.")]
-        int pixelHeight = 360;
         [SerializeField] Material screenMaterial;
         [SerializeField, Range(4, 256)] float colorLevels = 40;
         [SerializeField, Range(0, 2)] float ditherStrength = 1f;
@@ -28,8 +27,11 @@ namespace TheDeep.Core.Rendering
         /// <summary>Use this camera for UI raycasts; it matches the view but uses real screen pixels.</summary>
         public Camera EventCamera => eventCamera;
 
-        /// <summary>Temporarily use a different resolution (e.g. sharper while reading the terminal). Null to restore.</summary>
+        /// <summary>Temporarily use at least this resolution (e.g. sharper while reading the terminal). Null to restore.</summary>
         public void SetOverrideHeight(int? height) => overrideHeight = height;
+
+        /// <summary>Fixed field of view instead of the player's setting (e.g. so the terminal screen fits). Null to restore.</summary>
+        public float? FovOverride { get; set; }
 
         void Awake()
         {
@@ -74,7 +76,10 @@ namespace TheDeep.Core.Rendering
 
         void LateUpdate()
         {
-            int height = Mathf.Clamp(overrideHeight ?? pixelHeight, 64, Screen.height);
+            // Pixel size comes from the player's settings (0 = off, full resolution).
+            int setting = GameSettings.PixelHeight > 0 ? GameSettings.PixelHeight : Screen.height;
+            int height = Mathf.Clamp(Mathf.Max(overrideHeight ?? 0, setting), 64, Screen.height);
+            cam.fieldOfView = FovOverride ?? GameSettings.FieldOfView;
             int width = Mathf.Max(1, Mathf.RoundToInt(height * (float)Screen.width / Screen.height));
             if (target == null || target.width != width || target.height != height)
                 Recreate(width, height);

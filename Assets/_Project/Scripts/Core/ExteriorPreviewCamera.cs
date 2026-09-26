@@ -40,7 +40,7 @@ namespace TheDeep.Core
             var mouse = Mouse.current;
             if (!menuMode && mouse != null)
             {
-                Vector2 delta = mouse.delta.ReadValue() * 0.1f;
+                Vector2 delta = GameSettings.AdjustLook(mouse.delta.ReadValue()) * 0.1f;
                 yaw += delta.x;
                 pitch = Mathf.Clamp(pitch - delta.y, -60f, 80f);
                 distance = Mathf.Clamp(distance - mouse.scroll.ReadValue().y * 0.01f, 6f, 40f);

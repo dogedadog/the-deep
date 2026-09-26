@@ -20,6 +20,9 @@ namespace TheDeep.Submarine
         [SerializeField, Tooltip("Sharper pixel resolution while seated, so the screen text is readable.")]
         int seatedPixelHeight = 720;
 
+        /// <summary>The seated viewpoint is framed for this field of view, whatever the player's setting.</summary>
+        const float SeatedFov = 70f;
+
         PlayerInteractor user;
         bool transitioning;
 
@@ -35,6 +38,7 @@ namespace TheDeep.Submarine
             interactor.Controller.InputLocked = true;
             os.SetEventCamera(interactor.EventCamera);
             Transform cam = interactor.Camera.transform;
+            if (interactor.Pixelation != null) interactor.Pixelation.FovOverride = SeatedFov;
             StartCoroutine(MoveCamera(cam, () => new Pose(viewPoint.position, viewPoint.rotation), () =>
             {
                 if (interactor.Pixelation != null) interactor.Pixelation.SetOverrideHeight(seatedPixelHeight);
@@ -62,6 +66,7 @@ namespace TheDeep.Submarine
                 // Lock again once the move is done: in the Editor, the Esc press that got us here
                 // also releases the cursor on that same frame, undoing the lock above.
                 FirstPersonController.SetCursorLocked(true);
+                if (leaving.Pixelation != null) leaving.Pixelation.FovOverride = null;
                 cam.localPosition = Vector3.zero;
                 cam.localRotation = Quaternion.identity;
                 leaving.Controller.InputLocked = false;

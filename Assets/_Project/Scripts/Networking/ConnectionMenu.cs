@@ -1,5 +1,6 @@
 using TheDeep.Core;
 using TheDeep.Player;
+using TheDeep.UI;
 using TheDeep.UI.Terminal;
 using Unity.Netcode;
 using UnityEngine;
@@ -17,6 +18,7 @@ namespace TheDeep.Networking
         [SerializeField] ExteriorPreviewCamera menuCamera;
 
         GameObject menuPanel, pausePanel;
+        SettingsMenu settings;
         InputField codeField, addressField;
         Text statusText, sessionText, pauseInfo;
         bool paused;
@@ -76,8 +78,13 @@ namespace TheDeep.Networking
 
         void Update()
         {
-            if (!Connected) return;
             var keyboard = Keyboard.current;
+            if (settings.IsOpen)
+            {
+                if (keyboard != null && keyboard.escapeKey.wasPressedThisFrame) settings.Close();
+                return;
+            }
+            if (!Connected) return;
             var player = PlayerNetwork.Local;
             // Esc pauses, unless it's being used to leave the terminal (which locks input first).
             if (keyboard != null && keyboard.escapeKey.wasPressedThisFrame && player != null && (paused || !player.Controller.InputLocked))
@@ -126,6 +133,8 @@ namespace TheDeep.Networking
 
             BuildMainMenu(root);
             BuildPauseMenu(root);
+            settings = gameObject.AddComponent<SettingsMenu>();
+            settings.Build(root);
         }
 
         void BuildMainMenu(RectTransform root)
@@ -162,8 +171,9 @@ namespace TheDeep.Networking
             RetroUI.Place((RectTransform)statusText.transform.parent, 20, 250, 520, 140);
 
             Place(RetroUI.Button("Quit", b, "QUIT", Quit, 18), 20, 405, 120, 42);
-            var hint = RetroUI.Label("Hint", b, "Save slots arrive with the economy step.", 14, RetroUI.Shadow, TextAnchor.MiddleRight);
-            RetroUI.Place(hint.rectTransform, 150, 405, 390, 42);
+            Place(RetroUI.Button("Settings", b, "SETTINGS", () => OpenSettings(menuPanel), 18), 150, 405, 160, 42);
+            var hint = RetroUI.Label("Hint", b, "Save slots: economy step.", 14, RetroUI.Shadow, TextAnchor.MiddleRight);
+            RetroUI.Place(hint.rectTransform, 320, 405, 220, 42);
         }
 
         void BuildPauseMenu(RectTransform root)
@@ -184,9 +194,17 @@ namespace TheDeep.Networking
 
             pauseInfo = RetroUI.Readout("Info", box.transform, "", 17);
             RetroUI.Place((RectTransform)pauseInfo.transform.parent, 20, 54, 440, 150);
-            Place(RetroUI.Button("Resume", box.transform, "RESUME", () => SetPaused(false), 20), 20, 226, 200, 50);
-            Place(RetroUI.Button("Leave", box.transform, "LEAVE SESSION", () => Sessions.Leave(), 20), 260, 226, 200, 50);
+            Place(RetroUI.Button("Resume", box.transform, "RESUME", () => SetPaused(false), 18), 20, 226, 136, 50);
+            Place(RetroUI.Button("Settings", box.transform, "SETTINGS", () => OpenSettings(pausePanel), 18), 172, 226, 136, 50);
+            Place(RetroUI.Button("Leave", box.transform, "LEAVE", () => Sessions.Leave(), 18), 324, 226, 136, 50);
             pausePanel.SetActive(false);
+        }
+
+        /// <summary>Hide <paramref name="from"/> while the settings screen is up, then bring it back.</summary>
+        void OpenSettings(GameObject from)
+        {
+            from.SetActive(false);
+            settings.Open(() => from.SetActive(from == menuPanel ? !Connected : paused));
         }
 
         static void Section(Transform parent, string text, float y)

@@ -118,7 +118,7 @@ namespace TheDeep.Player
             var mouse = Mouse.current;
             if (mouse != null && Cursor.lockState == CursorLockMode.Locked)
             {
-                Vector2 delta = mouse.delta.ReadValue() * lookSensitivity;
+                Vector2 delta = GameSettings.AdjustLook(mouse.delta.ReadValue()) * lookSensitivity;
                 rb.MoveRotation(rb.rotation * Quaternion.Euler(0f, delta.x, 0f));
                 pitch = Mathf.Clamp(pitch - delta.y, -85f, 85f);
                 head.localRotation = Quaternion.Euler(pitch, 0f, 0f);
