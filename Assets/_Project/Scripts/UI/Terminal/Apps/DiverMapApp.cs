@@ -137,7 +137,11 @@ namespace TheDeep.UI.Terminal.Apps
                 string tetherText = tether != null && tether.HasRope
                     ? $"{tether.PaidOut:0}/{tether.MaxLength:0} M  T{tether.Tension * 100f:0}%{(tether.IsReeling ? " REEL" : "")}"
                     : "NONE";
-                sb.Append($"DIVER {net.CrewNumber}\n");
+                var health = diver.GetComponent<DiverHealth>();
+                bool noVitals = health != null && health.IsDead;
+                sb.Append(noVitals
+                    ? $"DIVER {net.CrewNumber}  <color=#ff5040>!! NO VITALS !!</color>\n"
+                    : $"DIVER {net.CrewNumber}  AIR {(health != null ? health.Air01 * 100f : 100f):0}%\n");
                 sb.Append($" DEPTH  {WorldInfo.DepthAt(diver.transform.position.y):0000} M\n");
                 sb.Append($" RANGE  {dist:0} M\n");
                 sb.Append($" TETHER {tetherText}\n");

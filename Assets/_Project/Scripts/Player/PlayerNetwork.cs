@@ -34,6 +34,7 @@ namespace TheDeep.Player
 
         public static PlayerNetwork Local { get; private set; }
         public Color SuitColor => SuitColors[OwnerClientId % (ulong)SuitColors.Length];
+        public static Color ColorForCrew(int crewNumber) => SuitColors[Mathf.Max(0, crewNumber - 1) % SuitColors.Length];
         /// <summary>1-based crew number shown on the terminal (D1, D2...).</summary>
         public int CrewNumber => (int)OwnerClientId + 1;
         public FirstPersonController Controller { get; private set; }

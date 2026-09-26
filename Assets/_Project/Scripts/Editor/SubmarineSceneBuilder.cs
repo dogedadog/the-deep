@@ -43,15 +43,21 @@ namespace TheDeep.EditorTools
             BuildStern(Group("Stern_DiveArea", sub));
             BuildMidship(Group("Midship_Consoles", sub));
             BuildBow(Group("Bow_Winch", sub));
-            BuildTerminal(Group("Terminal", sub));
+            var terminal = Group("Terminal", sub);
+            BuildTerminal(terminal);
+            BuildChipReader(terminal);
             BuildInteriorDetails(Group("Details", sub));
             BuildExterior(Group("Exterior", sub));
             BuildSeafloor(new GameObject("Environment").transform);
             BuildPointsOfInterest(new GameObject("PointsOfInterest").transform);
+            var bodyPrefab = BuildBodyPrefab();
+            BuildLostDivers(bodyPrefab, GameObject.Find("Zone4_Trench").transform);
+            BuildFootageRig();
             BuildExpeditionState();
             BuildSpawnPoints(Group("SpawnPoints", sub));
             var menuCamera = BuildDevTools(sub);
-            BuildNetworking(BuildPlayerPrefab(), menuCamera);
+            BuildNetworking(BuildPlayerPrefab(bodyPrefab), menuCamera, bodyPrefab);
+            ApplyNormalCullingMasks();
             new GameObject("EventSystem", typeof(EventSystem), typeof(InputSystemUIInputModule));
 
             EditorSceneManager.SaveScene(scene, ScenePath);
@@ -447,6 +453,7 @@ namespace TheDeep.EditorTools
             screenGo.AddComponent<CaseFilesApp>();
             screenGo.AddComponent<NavApp>();
             screenGo.AddComponent<RadioApp>();
+            AddFootageApp(screenGo);
             var os = screenGo.AddComponent<TerminalOS>();
 
             PointLight("ScreenGlow", root, new Vector3(0, 1.0f, -0.6f), new Color(0.4f, 0.8f, 0.8f), 0.25f, 1.8f, false);

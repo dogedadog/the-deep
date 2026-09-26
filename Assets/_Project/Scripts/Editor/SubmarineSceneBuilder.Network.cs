@@ -34,7 +34,7 @@ namespace TheDeep.EditorTools
         /// Player prefab: first-person rig (camera off until we know this is the local player) and a
         /// simple suited body other players see, tinted per player.
         /// </summary>
-        static GameObject BuildPlayerPrefab()
+        static GameObject BuildPlayerPrefab(GameObject bodyPrefab)
         {
             var suit = Mat("Player_Suit", null, Color.white, smoothness: 0.35f);
             var player = new GameObject("Player");
@@ -65,6 +65,7 @@ namespace TheDeep.EditorTools
             cam.backgroundColor = Color.black;
             cam.nearClipPlane = 0.03f;
             cam.fieldOfView = 70f;
+            cam.cullingMask = NormalCullingMask;
             cam.GetUniversalAdditionalCameraData().renderPostProcessing = true;
             Assign(camGo.AddComponent<PixelatedCamera>(), "screenMaterial", RetroScreenMaterial());
             camGo.SetActive(false);
@@ -109,6 +110,14 @@ namespace TheDeep.EditorTools
             var diver = player.AddComponent<DiverController>();
             Assign(diver, "head", head);
             Assign(diver, "headlamp", lamp);
+
+            // Air, suit crush and death (leaves a body), and the helmet camera.
+            var health = player.AddComponent<DiverHealth>();
+            Assign(health, "bodyPrefab", bodyPrefab);
+            Assign(health, "headlamp", lamp);
+            var helmetCam = player.AddComponent<TheDeep.Footage.HelmetCamera>();
+            Assign(helmetCam, "head", head);
+            Assign(helmetCam, "headlamp", lamp);
 
             // Tether clips onto the back of the harness, under the air tank.
             var harness = Group("Harness", player.transform);
@@ -168,7 +177,7 @@ namespace TheDeep.EditorTools
             return prefab;
         }
 
-        static void BuildNetworking(GameObject playerPrefab, ExteriorPreviewCamera menuCamera)
+        static void BuildNetworking(GameObject playerPrefab, ExteriorPreviewCamera menuCamera, GameObject bodyPrefab)
         {
             var prefabs = AssetDatabase.LoadAssetAtPath<NetworkPrefabsList>(NetworkPrefabsPath);
             if (prefabs == null)
@@ -176,8 +185,8 @@ namespace TheDeep.EditorTools
                 prefabs = ScriptableObject.CreateInstance<NetworkPrefabsList>();
                 AssetDatabase.CreateAsset(prefabs, NetworkPrefabsPath);
             }
-            if (!prefabs.Contains(playerPrefab))
-                prefabs.Add(new NetworkPrefab { Prefab = playerPrefab });
+            foreach (var prefab in new[] { playerPrefab, bodyPrefab })
+                if (!prefabs.Contains(prefab)) prefabs.Add(new NetworkPrefab { Prefab = prefab });
             EditorUtility.SetDirty(prefabs);
 
             var go = new GameObject("NetworkManager", typeof(NetworkManager), typeof(UnityTransport));

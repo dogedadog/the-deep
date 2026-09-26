@@ -30,6 +30,7 @@ namespace TheDeep.Player
         CharacterController walker;
         CapsuleCollider swimmer;
         FirstPersonController walking;
+        DiverHealth health;
         Vector3 swimInput;
         Vector3 externalForce;
         float pitch;
@@ -46,6 +47,7 @@ namespace TheDeep.Player
             walker = GetComponent<CharacterController>();
             swimmer = GetComponent<CapsuleCollider>();
             walking = GetComponent<FirstPersonController>();
+            health = GetComponent<DiverHealth>();
         }
 
         public override void OnNetworkSpawn()
@@ -110,6 +112,9 @@ namespace TheDeep.Player
         void Update()
         {
             if (!IsOwner || !diving.Value) return;
+            bool isDead = health != null && health.IsDead;
+            if (hud != null) hud.gameObject.SetActive(!isDead);
+            if (isDead) { swimInput = Vector3.zero; return; }
             UpdateHud();
 
             swimInput = Vector3.zero;

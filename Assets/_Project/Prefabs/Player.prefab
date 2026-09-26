@@ -756,6 +756,8 @@ GameObject:
   - component: {fileID: 3692132151086162227}
   - component: {fileID: 1990426857905011960}
   - component: {fileID: 2522197611304410039}
+  - component: {fileID: 1741573124626089281}
+  - component: {fileID: 6342356146432500847}
   - component: {fileID: 3399387875518807296}
   - component: {fileID: 4362920364178127192}
   - component: {fileID: 3472170462637441901}
@@ -914,6 +916,37 @@ MonoBehaviour:
   verticalAcceleration: 6.5
   sinkAcceleration: 0.25
   lookSensitivity: 0.08
+--- !u!114 &1741573124626089281
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5885648116558041882}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: dce804fafe7a61440ba9158977242fed, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::TheDeep.Player.DiverHealth
+  ShowTopMostFoldoutHeaderGroup: 1
+  airSeconds: 360
+  bodyPrefab: {fileID: 4374280694268161542, guid: ef002177530e9e44b8bd42f86f404bd7, type: 3}
+  headlamp: {fileID: 5947724542239506153}
+--- !u!114 &6342356146432500847
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5885648116558041882}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f3c31a76f7c721940852a302d065d877, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::TheDeep.Footage.HelmetCamera
+  ShowTopMostFoldoutHeaderGroup: 1
+  head: {fileID: 4384382696330580550}
+  headlamp: {fileID: 5947724542239506153}
 --- !u!114 &3399387875518807296
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1144,7 +1177,7 @@ Camera:
   m_Depth: 0
   m_CullingMask:
     serializedVersion: 2
-    m_Bits: 4294967295
+    m_Bits: 4294966783
   m_RenderingPath: -1
   m_TargetTexture: {fileID: 0}
   m_TargetDisplay: 0

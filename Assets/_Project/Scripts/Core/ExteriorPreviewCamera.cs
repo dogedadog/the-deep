@@ -32,9 +32,27 @@ namespace TheDeep.Core
             }
         }
 
+        Transform spectateTarget;
+
+        /// <summary>Dead players watch from outside, orbiting where they died.</summary>
+        public void Spectate(Transform target)
+        {
+            spectateTarget = target;
+            distance = 9f;
+            previewRig.SetActive(true);
+        }
+
+        public void StopSpectating()
+        {
+            if (spectateTarget == null) return;
+            spectateTarget = null;
+            distance = 14f;
+            previewRig.SetActive(menuMode);
+        }
+
         void Update()
         {
-            if (!menuMode) HandleToggle();
+            if (!menuMode && spectateTarget == null) HandleToggle();
             if (!Previewing) return;
 
             var mouse = Mouse.current;
@@ -48,7 +66,8 @@ namespace TheDeep.Core
             yaw += autoSpinDegreesPerSecond * Time.deltaTime;
 
             Quaternion rot = Quaternion.Euler(pitch, yaw, 0f);
-            previewRig.transform.SetPositionAndRotation(orbitCenter.position - rot * Vector3.forward * distance, rot);
+            Vector3 center = spectateTarget != null ? spectateTarget.position + Vector3.up : orbitCenter.position;
+            previewRig.transform.SetPositionAndRotation(center - rot * Vector3.forward * distance, rot);
         }
 
         void HandleToggle()

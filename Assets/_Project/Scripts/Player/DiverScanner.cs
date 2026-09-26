@@ -59,7 +59,8 @@ namespace TheDeep.Player
         void Update()
         {
             if (!IsOwner) return;
-            bool active = diver.IsDiving && !input.InputLocked;
+            var health = GetComponent<DiverHealth>();
+            bool active = diver.IsDiving && !input.InputLocked && (health == null || !health.IsDead);
             readout.gameObject.SetActive(diver.IsDiving);
             if (!active)
             {

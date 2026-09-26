@@ -44,6 +44,11 @@ namespace TheDeep.Data
             ledger = new NetworkList<LedgerEntry>();
         }
 
+        public override void OnNetworkSpawn()
+        {
+            if (IsServer) DiverHealth.ExpeditionStateAnnounce = message => AnnounceRpc(message);
+        }
+
         public bool IsDocumented(int targetId) => IsSpawned && documented.Contains(targetId);
 
         /// <summary>A diver finished scanning something: nobody else can scan it again this expedition.</summary>
@@ -145,6 +150,13 @@ namespace TheDeep.Data
             credits.Value = 0;
             submittedCount.Value = 0;
             ForceAboardRpc();
+            // Bodies of crewmates are left behind; Team 7's chips return to their suits.
+            foreach (var body in FindObjectsByType<TheDeep.Footage.DiverBody>(FindObjectsSortMode.None))
+            {
+                if (body.LostDiverIndex >= 0) body.ServerResetLostDiver();
+                else if (body.IsSpawned) body.NetworkObject.Despawn();
+            }
+            TheDeep.Footage.FootageArchive.Instance?.ServerResetForNewExpedition();
             if (SubNavigation.Instance != null) SubNavigation.Instance.ServerReturnToStart();
             AnnounceRpc($"EXPEDITION #{finished} COMPLETE  -  PROGRESS SAVED{(lost > 0 ? $"  -  {lost} UNSPENT CR LOST" : "")}\n" +
                         $"EXPEDITION #{finished + 1} BEGINS");
@@ -158,6 +170,8 @@ namespace TheDeep.Data
         {
             var local = PlayerNetwork.Local;
             if (local == null || DiveHatch.CabinEntry == null) return;
+            var health = local.GetComponent<DiverHealth>();
+            if (health != null) health.Revive(); // also brings the diver aboard
             var diver = local.GetComponent<DiverController>();
             if (diver != null && diver.IsDiving) diver.ExitWater(DiveHatch.CabinEntry);
         }
