@@ -3,6 +3,7 @@ using System.Text;
 using TheDeep.Core;
 using TheDeep.Player;
 using TheDeep.Progression;
+using TheDeep.Voice;
 using Unity.Netcode;
 using UnityEngine;
 using UnityEngine.UI;
@@ -43,11 +44,55 @@ namespace TheDeep.Footage
             if (!IsOwner) return;
             diver.HudLines.Add(HudLine);
             BuildOverlay();
+            PlayerVoice.LocalVoiceFrame += OnOwnVoice;
+            PlayerVoice.RemoteVoiceHeard += OnVoiceHeard;
+        }
+
+        public override void OnNetworkDespawn()
+        {
+            PlayerVoice.LocalVoiceFrame -= OnOwnVoice;
+            PlayerVoice.RemoteVoiceHeard -= OnVoiceHeard;
+        }
+
+        // ------------------------------------------------------------------ sound
+
+        void OnOwnVoice(float[] samples)
+        {
+            if (recording) AddAudio(samples, FootageAudio.OwnVoice, 1f);
+        }
+
+        void OnVoiceHeard(PlayerVoice speaker, float[] samples, bool radio, float signal)
+        {
+            if (!recording) return;
+            if (radio)
+            {
+                float mine = SignalModel.Strength(transform.position);
+                AddAudio(samples, FootageAudio.Radio, Mathf.Min(signal, mine));
+            }
+            else if (speaker.IsDiving && Vector3.Distance(speaker.transform.position, transform.position) < 20f)
+            {
+                AddAudio(samples, FootageAudio.Nearby, 1f);
+            }
+        }
+
+        void AddAudio(float[] samples, byte channel, float signal)
+        {
+            var bytes = new byte[samples.Length];
+            for (int i = 0; i < samples.Length; i++) bytes[i] = VoiceCodec.Encode(samples[i]);
+            clip.Audio.Add(new FootageAudio { Time = recorded, Channel = channel, Signal = (byte)(Mathf.Clamp01(signal) * 255f), Samples = bytes });
         }
 
         void Update()
         {
             if (!IsOwner) return;
+            // Test shortcut: F4 sends what you've filmed straight to the chip reader.
+            var keyboard = UnityEngine.InputSystem.Keyboard.current;
+            if (keyboard != null && keyboard.f4Key.wasPressedThisFrame && HasFootage && FootageArchive.Instance != null)
+            {
+                var archive = FootageArchive.Instance;
+                archive.Submit(archive.NewChipId(), TakeChip(endsInDeath: false), ChipStatus.Inserted);
+                ExpeditionAnnounceLocal("TEST: YOUR FOOTAGE IS IN THE CHIP READER - open the Footage app");
+            }
             bool canFilm = diver.IsDiving && (health == null || !health.IsDead) && !GetComponent<FirstPersonController>().InputLocked;
             recording = canFilm && Controls.Held(GameAction.Record) && FilmLeft > 0f;
             if (recording)
@@ -61,10 +106,21 @@ namespace TheDeep.Footage
                     clip.Frames.Add(new FootageFrame { Time = recorded, Position = head.position, Rotation = head.rotation, Lamp = headlamp.enabled });
                 }
             }
-            recText.gameObject.SetActive(recording || (diver.IsDiving && FilmLeft <= 0f));
+            bool flashing = Time.time < flashUntil;
+            recText.gameObject.SetActive(recording || flashing || (diver.IsDiving && FilmLeft <= 0f));
             recText.text = recording
                 ? $"<color=#ff3020>●</color> REC  {TimeSpan.FromSeconds(recorded):mm\\:ss}   FILM {FilmLeft:0}s"
+                : flashing ? flashText
                 : "FILM FULL - put the chip in the sub's reader";
+        }
+
+        float flashUntil;
+        string flashText;
+
+        void ExpeditionAnnounceLocal(string message)
+        {
+            flashText = message;
+            flashUntil = Time.time + 4f;
         }
 
         void NewChip()

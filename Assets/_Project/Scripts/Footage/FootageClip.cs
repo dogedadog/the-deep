@@ -17,6 +17,17 @@ namespace TheDeep.Footage
         public Quaternion ProxyRotation;
     }
 
+    /// <summary>A piece of sound picked up while filming (8 kHz mu-law, like the radio).</summary>
+    public struct FootageAudio
+    {
+        public const byte OwnVoice = 0, Nearby = 1, Radio = 2;
+
+        public float Time;
+        public byte Channel;
+        public byte Signal;       // radio quality, 0-255
+        public byte[] Samples;
+    }
+
     /// <summary>
     /// Helmet-camera footage, stored as the camera's path (10 samples a second) rather than video:
     /// playback re-renders the scene from those viewpoints. Small enough to send over the network.
@@ -29,6 +40,8 @@ namespace TheDeep.Footage
         public bool EndsInDeath;
         public bool Corrupted;
         public readonly List<FootageFrame> Frames = new();
+        /// <summary>Voices heard while filming, in time order.</summary>
+        public readonly List<FootageAudio> Audio = new();
 
         public float Duration => Frames.Count > 0 ? Frames[^1].Time : 0f;
 
@@ -77,6 +90,15 @@ namespace TheDeep.Footage
                 Write(w, f.ProxyPosition);
                 Write(w, f.ProxyRotation.eulerAngles);
             }
+            w.Write(Audio.Count);
+            foreach (var a in Audio)
+            {
+                w.Write(a.Time);
+                w.Write(a.Channel);
+                w.Write(a.Signal);
+                w.Write(a.Samples.Length);
+                w.Write(a.Samples);
+            }
             return stream.ToArray();
         }
 
@@ -108,6 +130,14 @@ namespace TheDeep.Footage
                     f.ProxyRotation = Quaternion.Euler(Read(r));
                 }
                 clip.Frames.Add(f);
+            }
+            if (r.BaseStream.Position >= r.BaseStream.Length) return clip; // footage without sound
+            int audioCount = r.ReadInt32();
+            for (int i = 0; i < audioCount; i++)
+            {
+                var a = new FootageAudio { Time = r.ReadSingle(), Channel = r.ReadByte(), Signal = r.ReadByte() };
+                a.Samples = r.ReadBytes(r.ReadInt32());
+                clip.Audio.Add(a);
             }
             return clip;
         }

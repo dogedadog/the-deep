@@ -126,6 +126,8 @@ namespace TheDeep.UI.Terminal.Apps
             if (!open || playback == null) return;
             var archive = FootageArchive.Instance;
             RefreshList(archive);
+            // Nothing picked yet: start the newest chip.
+            if (selected == -1 && listed.Count > 0) Select(listed.Count - 1);
 
             // Footage still downloading: keep asking until it arrives.
             if (selected != -1 && playback.Clip == null && archive != null)

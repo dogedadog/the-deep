@@ -41,6 +41,11 @@ namespace TheDeep.Voice
         public static readonly List<RadioLogEntry> RadioLog = new();
         public static bool MicMuted { get; private set; }
 
+        /// <summary>Local player's own voice, as 20 ms frames of 8 kHz audio that were sent (for the helmet camera).</summary>
+        public static event Action<float[]> LocalVoiceFrame;
+        /// <summary>Another player's voice arrived here: (speaker, samples, isRadio, sender signal).</summary>
+        public static event Action<PlayerVoice, float[], bool, float> RemoteVoiceHeard;
+
         PlayerNetwork net;
         DiverController diver;
         VoiceOutput proximityOut, radioOut;
@@ -156,10 +161,15 @@ namespace TheDeep.Voice
                 peak = Mathf.Max(peak, Mathf.Abs(samples[i]));
             }
             ReceivedLevel = Mathf.Max(ReceivedLevel, Mathf.Clamp01(peak * 3f));
-            if ((flags & FlagProximity) != 0) proximityOut.Push(samples);
+            if ((flags & FlagProximity) != 0)
+            {
+                proximityOut.Push(samples);
+                RemoteVoiceHeard?.Invoke(this, samples, false, 1f);
+            }
             if ((flags & FlagRadio) != 0)
             {
                 radioOut.Push(samples);
+                RemoteVoiceHeard?.Invoke(this, samples, true, senderSignal / 255f);
                 heardSignal = senderSignal / 255f;
                 if (radioStarted < 0f) radioStarted = Time.time;
                 lastRadioHeard = Time.time;
@@ -210,6 +220,7 @@ namespace TheDeep.Voice
                 bool radio = radioHeld; // push-to-talk works even when muted
                 if (!proximity && !radio) { outgoing.Clear(); continue; }
                 anyVoice = true;
+                LocalVoiceFrame?.Invoke((float[])frame.Clone());
 
                 foreach (float s in frame) outgoing.Add(VoiceCodec.Encode(Mathf.Clamp(s * 1.4f, -1f, 1f)));
                 if (outgoing.Count >= FrameSamples * FramesPerPacket)

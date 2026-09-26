@@ -34,7 +34,19 @@ namespace TheDeep.Voice
         // Filter state (audio thread only).
         float hpPrevIn, hpPrevOut, lpOut, muffleOut;
 
-        public void Init(Mode outputMode)
+        /// <summary>Drop anything queued (e.g. when footage is scrubbed).</summary>
+        public void Clear()
+        {
+            lock (gate)
+            {
+                count = 0;
+                readIndex = writeIndex;
+                playing = false;
+            }
+        }
+
+        /// <param name="spatial">Proximity voices are 3D in the world; footage playback uses them flat (2D).</param>
+        public void Init(Mode outputMode, bool spatial = true)
         {
             mode = outputMode;
             var clip = AudioClip.Create($"Voice_{mode}", VoiceCodec.SampleRate, 1, VoiceCodec.SampleRate, true, OnRead);
@@ -42,7 +54,7 @@ namespace TheDeep.Voice
             source.clip = clip;
             source.loop = true;
             source.playOnAwake = false;
-            source.spatialBlend = mode == Mode.Proximity ? 1f : 0f;
+            source.spatialBlend = mode == Mode.Proximity && spatial ? 1f : 0f;
             source.rolloffMode = AudioRolloffMode.Linear;
             source.minDistance = 2f;
             source.maxDistance = 20f;

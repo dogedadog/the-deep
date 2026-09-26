@@ -72,10 +72,14 @@ namespace TheDeep.Submarine
             }
 
             // Collide with the world: if a point moved into rock (or the hull) this step, stop it at the surface.
+            // A point whose neighbours are far away is snagged behind something (e.g. the rope was
+            // yanked through a wall); let it pull free rather than stay stuck and eat up rope.
             int mask = TetherAnchor.RopeCollisionMask;
+            float snag = Mathf.Max(rest * 4f, 1.5f);
             for (int i = 1; i < Segments; i++)
             {
-                if (Physics.Linecast(previous[i], points[i], out RaycastHit hit, mask, QueryTriggerInteraction.Ignore))
+                bool snagged = Vector3.Distance(points[i], points[i - 1]) > snag || Vector3.Distance(points[i], points[i + 1]) > snag;
+                if (!snagged && Physics.Linecast(previous[i], points[i], out RaycastHit hit, mask, QueryTriggerInteraction.Ignore))
                     points[i] = hit.point + hit.normal * 0.04f;
             }
             points[0] = start;

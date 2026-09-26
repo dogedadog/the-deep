@@ -61,9 +61,10 @@ namespace TheDeep.Player
         public void EnterWater(Transform point)
         {
             if (!IsOwner || diving.Value) return;
+            // Move out first: the tether is attached when diving starts, and must not start inside the sub.
+            Teleport(point);
             diving.Value = true;
             Apply(true);
-            Teleport(point);
             float p = head.localEulerAngles.x;
             pitch = p > 180f ? p - 360f : p;
         }
