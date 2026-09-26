@@ -145,6 +145,7 @@ namespace TheDeep.Data
             credits.Value = 0;
             submittedCount.Value = 0;
             ForceAboardRpc();
+            if (SubNavigation.Instance != null) SubNavigation.Instance.ServerReturnToStart();
             AnnounceRpc($"EXPEDITION #{finished} COMPLETE  -  PROGRESS SAVED{(lost > 0 ? $"  -  {lost} UNSPENT CR LOST" : "")}\n" +
                         $"EXPEDITION #{finished + 1} BEGINS");
         }

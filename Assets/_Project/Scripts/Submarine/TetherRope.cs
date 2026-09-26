@@ -17,7 +17,9 @@ namespace TheDeep.Submarine
         readonly Vector3[] points = new Vector3[Segments + 1];
         readonly Vector3[] previous = new Vector3[Segments + 1];
         LineRenderer line;
-        TetherAnchor anchor;
+
+        /// <summary>Don't draw rope within this many metres of the diver (used for the diver's own rope).</summary>
+        public float HideNearEnd { get; set; }
 
         /// <summary>Rope paid out, metres.</summary>
         public float Length { get; set; } = 5f;
@@ -26,9 +28,8 @@ namespace TheDeep.Submarine
         /// <summary>Direction the rope pulls the end back along (towards the next point in).</summary>
         public Vector3 PullDirection { get; private set; }
 
-        public void Init(TetherAnchor anchorPoint, Vector3 start, Vector3 end, Material material)
+        public void Init(Vector3 start, Vector3 end, Material material)
         {
-            anchor = anchorPoint;
             line = GetComponent<LineRenderer>();
             line.positionCount = points.Length;
             line.widthMultiplier = 0.05f;
@@ -68,8 +69,14 @@ namespace TheDeep.Submarine
                     if (i != 0) points[i] += correction;
                     if (i + 1 != Segments) points[i + 1] -= correction;
                 }
-                if (anchor != null)
-                    for (int i = 1; i < Segments; i++) points[i] = anchor.Collide(points[i]);
+            }
+
+            // Collide with the world: if a point moved into rock (or the hull) this step, stop it at the surface.
+            int mask = TetherAnchor.RopeCollisionMask;
+            for (int i = 1; i < Segments; i++)
+            {
+                if (Physics.Linecast(previous[i], points[i], out RaycastHit hit, mask, QueryTriggerInteraction.Ignore))
+                    points[i] = hit.point + hit.normal * 0.04f;
             }
             points[0] = start;
             points[Segments] = end;
@@ -81,7 +88,12 @@ namespace TheDeep.Submarine
             Vector3 back = points[Segments - 3] - end;
             PullDirection = back.sqrMagnitude > 0.0001f ? back.normalized : (start - end).normalized;
 
-            line.SetPositions(points);
+            // The diver's own view: drop the last bit of rope so it doesn't sweep across the camera.
+            int shown = points.Length;
+            if (HideNearEnd > 0f)
+                while (shown > 2 && Vector3.Distance(points[shown - 1], end) < HideNearEnd) shown--;
+            if (line.positionCount != shown) line.positionCount = shown;
+            for (int i = 0; i < shown; i++) line.SetPosition(i, points[i]);
         }
     }
 }

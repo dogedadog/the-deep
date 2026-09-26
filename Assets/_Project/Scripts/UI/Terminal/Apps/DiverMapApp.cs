@@ -107,7 +107,7 @@ namespace TheDeep.UI.Terminal.Apps
         void Refresh()
         {
             var sb = new StringBuilder();
-            var subPos = Vector3.zero;
+            var subPos = TheDeep.Submarine.SubNavigation.SubPosition;
             int deployed = 0;
             foreach (var diver in divers)
             {
@@ -146,7 +146,7 @@ namespace TheDeep.UI.Terminal.Apps
             }
 
             UpdateWinchButtons();
-            info.text = $"DIVERS OUT: {deployed}\nSUB DEPTH: {WorldInfo.SurfaceDepth:0} M\n\n" +
+            info.text = $"DIVERS OUT: {deployed}\nSUB DEPTH: {WorldInfo.DepthAt(subPos.y):0} M\n\n" +
                         (deployed == 0 ? "-- NO DIVERS DEPLOYED --\n\nDive hatch is at the stern." : sb.ToString());
         }
 

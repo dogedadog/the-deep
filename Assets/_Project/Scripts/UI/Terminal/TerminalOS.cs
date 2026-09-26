@@ -122,9 +122,9 @@ namespace TheDeep.UI.Terminal
                 new Color(1, 1, 1, 0.07f), TextAnchor.MiddleCenter, FontStyle.Bold);
             RetroUI.Stretch(logo.rectTransform, 0, 0, 0, TaskbarHeight);
 
-            // Icons in a column down the left side.
+            // Icons in columns of five down the left side.
             for (int i = 0; i < apps.Length; i++)
-                CreateIcon(apps[i], desktop.transform, 20, 20 + i * 110);
+                CreateIcon(apps[i], desktop.transform, 20 + i / 5 * 120, 16 + i % 5 * 106);
 
             windowLayer = RetroUI.Stretch(RetroUI.Rect("Windows", root), 0, 0, 0, TaskbarHeight);
             windowLayer.gameObject.AddComponent<RectMask2D>(); // dragged windows get cut off at the screen edge

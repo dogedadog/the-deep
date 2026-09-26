@@ -445,6 +445,7 @@ namespace TheDeep.EditorTools
             Assign(cameras, "feedMaterial", ShaderMaterial("M_CCTVFeed", "TheDeep/CCTVFeed"));
             screenGo.AddComponent<BalanceApp>();
             screenGo.AddComponent<CaseFilesApp>();
+            screenGo.AddComponent<NavApp>();
             var os = screenGo.AddComponent<TerminalOS>();
 
             PointLight("ScreenGlow", root, new Vector3(0, 1.0f, -0.6f), new Color(0.4f, 0.8f, 0.8f), 0.25f, 1.8f, false);

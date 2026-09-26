@@ -98,9 +98,9 @@ namespace TheDeep.EditorTools
             var lamp = lampGo.GetComponent<Light>();
             lamp.type = LightType.Spot;
             lamp.color = new Color(0.85f, 0.93f, 1f);
-            lamp.intensity = 30f;
-            lamp.range = 20f;
-            lamp.spotAngle = 55f;
+            lamp.intensity = 140f;
+            lamp.range = 38f;
+            lamp.spotAngle = 62f;
             lamp.innerSpotAngle = 25f;
             lamp.shadows = LightShadows.None;
             lamp.enabled = false;
@@ -137,6 +137,10 @@ namespace TheDeep.EditorTools
             var scanner = player.AddComponent<DiverScanner>();
             Assign(scanner, "head", head);
             Assign(scanner, "beamMaterial", Mat("Scanner_Beam", null, new Color(0.4f, 0.95f, 1f), emission: new Color(0.6f, 2f, 2.4f)));
+
+            // Own layer, so ropes (and later footage cameras) can ignore players.
+            int playerLayer = LayerMask.NameToLayer("Player");
+            foreach (var child in player.GetComponentsInChildren<Transform>(true)) child.gameObject.layer = playerLayer;
 
             System.IO.Directory.CreateDirectory("Assets/_Project/Prefabs");
             var prefab = PrefabUtility.SaveAsPrefabAsset(player, PlayerPrefabPath);

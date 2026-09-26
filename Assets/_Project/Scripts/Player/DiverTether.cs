@@ -75,9 +75,10 @@ namespace TheDeep.Player
             var go = new GameObject($"Tether_{OwnerClientId}", typeof(LineRenderer), typeof(TetherRope));
             rope = go.GetComponent<TetherRope>();
             Vector3 start = anchor.AttachPoint((int)OwnerClientId);
-            rope.Init(anchor, start, harness.position, ropeMaterial);
+            rope.Init(start, harness.position, ropeMaterial);
             if (IsOwner) paidOut.Value = Mathf.Clamp(Vector3.Distance(start, harness.position) + 1.5f, minLength, MaxLength);
             rope.Length = Mathf.Max(paidOut.Value, minLength);
+            if (IsOwner) rope.HideNearEnd = 1.6f;
             Debug.Log($"[Tether] Rope attached to player {OwnerClientId}");
         }
 

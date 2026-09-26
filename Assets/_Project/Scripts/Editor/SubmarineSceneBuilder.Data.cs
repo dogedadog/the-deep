@@ -18,9 +18,11 @@ namespace TheDeep.EditorTools
             // Current expedition (resets on surfacing) + permanent crew progress (saved), one network object.
             var go = new GameObject("ExpeditionState", typeof(NetworkObject), typeof(ExpeditionState), typeof(TheDeep.Progression.CrewProgress));
             go.transform.position = new Vector3(0, 1.3f, 0);
+            BuildNavigation(go);
         }
 
-        static void BuildPointsOfInterest(Transform t)
+        /// <summary>Materials shared by the point-of-interest builders (safe to call more than once).</summary>
+        static void InitPoiMaterials()
         {
             rock = AssetDatabaseMat("Env_Rock");
             crystal = Mat("POI_Crystal", null, new Color(0.3f, 0.9f, 1f), smoothness: 0.9f, emission: new Color(0.25f, 1.1f, 1.4f));
@@ -30,17 +32,22 @@ namespace TheDeep.EditorTools
             isopodShell = Mat("POI_Isopod", null, new Color(0.62f, 0.58f, 0.62f), metallic: 0.2f, smoothness: 0.5f);
             monolithGlyph = Mat("POI_Glyph", null, new Color(0.1f, 0.3f, 0.3f), emission: new Color(0.1f, 0.9f, 0.8f));
             brine = Mat("POI_Brine", null, new Color(0.01f, 0.02f, 0.025f), smoothness: 1f, emission: new Color(0.0f, 0.05f, 0.06f));
+        }
 
+        /// <summary>Station 1 (the shelf): the first things worth documenting, near the sub.</summary>
+        static void BuildPointsOfInterest(Transform t)
+        {
+            InitPoiMaterials();
             float floor = SeafloorY;
-            ThermalVent(t, 1, new Vector3(14f, floor, -8f));
-            TubeWorms(t, 8, new Vector3(15.8f, floor, -6.4f));
-            CrystalVein(t, 2, new Vector3(-14f, floor, 10f), 20f);
-            CrystalVein(t, 3, new Vector3(22f, floor, 12f), 140f);
-            CrystalVein(t, 4, new Vector3(-30f, floor, -6f), 260f);
-            BrinePool(t, 5, new Vector3(-8f, floor, -18f));
+            ThermalVent(t, 1, OnGround(14f, -8f, floor));
+            TubeWorms(t, 8, OnGround(15.8f, -6.4f, floor));
+            CrystalVein(t, 2, OnGround(-14f, 10f, floor), 20f);
+            CrystalVein(t, 3, OnGround(22f, 12f, floor), 140f);
+            CrystalVein(t, 4, OnGround(-30f, -6f, floor), 260f);
+            BrinePool(t, 5, OnGround(-8f, -18f, floor));
             Jellyfish(t, 6, new Vector3(6f, -4.5f, 12f));
-            Isopod(t, 7, new Vector3(-20f, floor + 0.2f, -7f), new Vector3(-13f, floor + 0.2f, -2f));
-            Monolith(t, 9, new Vector3(30f, floor, -2f));
+            Isopod(t, 7, OnGround(-20f, -7f, floor, 0.2f), OnGround(-13f, -2f, floor, 0.2f));
+            Monolith(t, 9, OnGround(30f, -2f, floor));
 
             // The old dive helmet on the seabed is evidence about the missing team.
             var helmet = GameObject.Find("OldDiveHelmet");
@@ -65,7 +72,8 @@ namespace TheDeep.EditorTools
             return target;
         }
 
-        static void ThermalVent(Transform t, int id, Vector3 pos)
+        /// <summary>Rock chimney with a glowing mouth and bubbles. id 0 = scenery only (not scannable).</summary>
+        static void ThermalVent(Transform t, int id, Vector3 pos, string title = "HYDROTHERMAL VENT", int value = 60)
         {
             var root = Group("ThermalVent", t);
             root.localPosition = pos;
@@ -98,7 +106,7 @@ namespace TheDeep.EditorTools
             noise.enabled = true;
             noise.strength = 0.3f;
 
-            MakeScannable(root.gameObject, id, "HYDROTHERMAL VENT", DataCategory.Environment, 60, 4f, 2.5f);
+            if (id > 0) MakeScannable(root.gameObject, id, title, DataCategory.Environment, value, 4f, 2.5f);
         }
 
         static void TubeWorms(Transform t, int id, Vector3 pos)

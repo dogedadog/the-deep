@@ -120,8 +120,7 @@ namespace TheDeep.EditorTools
             Cylinder("TetherFairlead", t, new Vector3(-2.4f, -1.1f, 0.55f), new Vector3(0.3f, 0.15f, 0.3f), darkMetal);
             var anchorPoint = Group("TetherAnchor", t);
             anchorPoint.localPosition = new Vector3(-2.4f, -1.22f, 0.55f);
-            var anchor = anchorPoint.gameObject.AddComponent<TetherAnchor>();
-            Assign(anchor, "seafloorY", SeafloorY);
+            anchorPoint.gameObject.AddComponent<TetherAnchor>();
 
             // Hull cameras, viewable from the terminal's camera app.
             var cams = Group("HullCameras", t);
@@ -202,69 +201,34 @@ namespace TheDeep.EditorTools
             // Faint blue light filtering down from far above, just enough to read silhouettes.
             var down = new GameObject("DownwellingLight", typeof(Light));
             down.transform.SetParent(t, false);
-            down.transform.localRotation = Quaternion.Euler(80f, 30f, 0f);
+            down.transform.localRotation = Quaternion.Euler(62f, 30f, 0f); // tilted a little so cliff faces catch some of it
             var downLight = down.GetComponent<Light>();
             downLight.type = LightType.Directional;
             downLight.color = new Color(0.35f, 0.55f, 0.65f);
-            downLight.intensity = 0.55f;
             downLight.shadows = LightShadows.Hard; // the hull/ceiling keep it out of the cabin
 
             BuildPostProcessing(t);
 
-            var floorGo = Box("Seafloor", t, new Vector3(0, SeafloorY - 0.5f, 0), new Vector3(160f, 1f, 160f), silt);
-            Assign(floorGo.GetComponent<WorldUVBox>(), "tilesPerMeter", 0.5f);
+            downLight.intensity = 0.55f;
+            BuildWorld(t, rock, silt, downLight);
 
-            // Scattered boulders (none directly under the sub).
-            var rng = new System.Random(5);
-            float R(float min, float max) => min + (float)rng.NextDouble() * (max - min);
-            for (int i = 0; i < 45; i++)
-            {
-                float angle = R(0, Mathf.PI * 2), dist = R(9f, 50f);
-                var pos = new Vector3(Mathf.Cos(angle) * dist, SeafloorY, Mathf.Sin(angle) * dist);
-                var scale = new Vector3(R(1.5f, 6f), R(0.8f, 3.5f), R(1.5f, 6f));
-                var boulder = Primitive(PrimitiveType.Sphere, "Boulder", t, pos + Vector3.up * scale.y * 0.2f, scale, rock, collider: true);
-                boulder.transform.localRotation = Quaternion.Euler(R(-15, 15), R(0, 360), R(-15, 15));
-            }
-
-            // Trench walls on both sides.
-            foreach (float side in new[] { -1f, 1f })
-            {
-                for (int i = 0; i < 9; i++)
-                {
-                    var pos = new Vector3(-50f + i * 12.5f + R(-3, 3), SeafloorY + R(6, 12), side * R(26f, 34f));
-                    var wall = Box("TrenchWall", t, pos, new Vector3(R(12, 18), R(30, 45), R(8, 14)), rock);
-                    wall.transform.localRotation = Quaternion.Euler(side * R(8, 20), R(-25, 25), R(-10, 10));
-                    Assign(wall.GetComponent<WorldUVBox>(), "tilesPerMeter", 0.35f);
-                }
-            }
-
-            // Something on the seabed that shouldn't be there: an old dive helmet and a snapped tether.
-            var helmetMat = Mat("Env_OldBrass", null, new Color(0.3f, 0.26f, 0.15f), metallic: 0.6f, smoothness: 0.2f);
-            Sphere("OldDiveHelmet", t, new Vector3(9f, SeafloorY + 0.15f, 7f), 0.4f, helmetMat);
-            Vector3 p = new Vector3(9.4f, SeafloorY + 0.04f, 7.2f);
-            for (int i = 0; i < 7; i++)
-            {
-                Vector3 next = p + new Vector3(R(0.6f, 1.1f), 0, R(-0.6f, 0.6f));
-                var seg = Cylinder("OldTether", t, (p + next) * 0.5f, new Vector3(0.05f, (next - p).magnitude * 0.5f, 0.05f), rope);
-                seg.transform.localRotation = Quaternion.FromToRotation(Vector3.up, next - p);
-                p = next;
-            }
-
-            // Marine snow drifting around the sub (lit, so it glitters only in the headlights).
-            var particles = Particles("MarineSnow", t, new Vector3(0, HullY, 0), snow);
+            // Marine snow drifting around the sub (lit, so it glitters only in lights). Child of the
+            // sub so it comes along to every dive station.
+            var sub = GameObject.Find("Submarine").transform;
+            var particles = Particles("MarineSnow", sub, new Vector3(0, HullY, 0), snow);
             var main = particles.main;
             main.startLifetime = 25f;
             main.startSpeed = 0.05f;
             main.gravityModifier = 0.003f;
             main.startSize = new ParticleSystem.MinMaxCurve(0.03f, 0.07f);
             main.startColor = new Color(0.8f, 0.85f, 0.8f);
-            main.maxParticles = 1800;
+            main.maxParticles = 2500;
             var emission = particles.emission;
-            emission.rateOverTime = 70f;
+            emission.rateOverTime = 100f;
             var shape = particles.shape;
             shape.shapeType = ParticleSystemShapeType.Sphere;
-            shape.radius = 24f;
-            shape.radiusThickness = 0.7f; // emit in a shell, so none spawn inside the cabin
+            shape.radius = 30f;
+            shape.radiusThickness = 0.75f; // emit in a shell, so none spawn inside the cabin
         }
 
         /// <summary>
