@@ -48,6 +48,8 @@ namespace TheDeep.Player
             // A thick ray, so you don't have to aim at the exact pixel of an object.
             if (Physics.SphereCast(cam.position, aimRadius, cam.forward, out RaycastHit hit, range, ~0, QueryTriggerInteraction.Collide))
                 target = hit.collider.GetComponentInParent<IInteractable>();
+            if (target == null || !target.CanInteract(this))
+                target = FindNearby(cam.position);
 
             if (target != null && target.CanInteract(this))
             {
@@ -59,6 +61,19 @@ namespace TheDeep.Player
             {
                 prompt.text = "";
             }
+        }
+
+        readonly Collider[] nearby = new Collider[8];
+
+        IInteractable FindNearby(Vector3 position)
+        {
+            int count = Physics.OverlapSphereNonAlloc(position, 0.6f, nearby, ~0, QueryTriggerInteraction.Collide);
+            for (int i = 0; i < count; i++)
+            {
+                var candidate = nearby[i].GetComponentInParent<IProximityInteractable>();
+                if (candidate != null && candidate.CanInteract(this)) return candidate;
+            }
+            return null;
         }
 
         void BuildHud()

@@ -76,6 +76,40 @@ namespace TheDeep.EditorTools
             Assign(interactor, "playerCamera", cam);
             interactor.enabled = false;
 
+            // Swimming: a physics body + capsule, only active while in the water.
+            var rb = player.AddComponent<Rigidbody>();
+            rb.isKinematic = true;
+            rb.useGravity = false;
+            rb.mass = 80f;
+            rb.linearDamping = 2.2f;
+            rb.angularDamping = 10f;
+            rb.freezeRotation = true;
+            rb.interpolation = RigidbodyInterpolation.Interpolate;
+            rb.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
+            var capsule = player.AddComponent<CapsuleCollider>();
+            capsule.height = 1.8f;
+            capsule.radius = 0.3f;
+            capsule.center = new Vector3(0, 0.9f, 0);
+            capsule.enabled = false;
+
+            var lampGo = new GameObject("Headlamp", typeof(Light));
+            lampGo.transform.SetParent(head, false);
+            lampGo.transform.localPosition = new Vector3(0, 0.12f, 0.18f);
+            var lamp = lampGo.GetComponent<Light>();
+            lamp.type = LightType.Spot;
+            lamp.color = new Color(0.85f, 0.93f, 1f);
+            lamp.intensity = 30f;
+            lamp.range = 20f;
+            lamp.spotAngle = 55f;
+            lamp.innerSpotAngle = 25f;
+            lamp.shadows = LightShadows.None;
+            lamp.enabled = false;
+            var lampHousing = Box("HeadlampHousing", head, new Vector3(0, 0.12f, 0.15f), new Vector3(0.08f, 0.06f, 0.06f), rubber, collider: false, worldUV: false);
+
+            var diver = player.AddComponent<DiverController>();
+            Assign(diver, "head", head);
+            Assign(diver, "headlamp", lamp);
+
             // Networking: owner moves itself; everyone else interpolates.
             player.AddComponent<NetworkObject>();
             var nt = player.AddComponent<NetworkTransform>();
@@ -89,7 +123,7 @@ namespace TheDeep.EditorTools
             Assign(net, "head", head);
             Assign(net, "cameraRoot", camGo);
             AssignArray(net, "suitRenderers", Renderers(torso, armL, armR));
-            AssignArray(net, "bodyRenderers", Renderers(torso, armL, armR, tank, helmet, visor));
+            AssignArray(net, "bodyRenderers", Renderers(torso, armL, armR, tank, helmet, visor, lampHousing));
             AssignArray(net, "ownerOnly", new Object[] { fpc, interactor });
 
             System.IO.Directory.CreateDirectory("Assets/_Project/Prefabs");

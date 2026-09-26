@@ -36,6 +36,7 @@ namespace TheDeep.EditorTools
             hull.transform.SetParent(t, false);
             hull.GetComponent<MeshFilter>().sharedMesh = HullMesh();
             hull.GetComponent<MeshRenderer>().sharedMaterial = hullPaint;
+            hull.AddComponent<MeshCollider>().sharedMesh = hull.GetComponent<MeshFilter>().sharedMesh; // divers bump into it
 
             // Big glowing bow window (the viewport you see from inside).
             Sphere("BowWindow", t, new Vector3(7.62f, 1.45f, 0.1f), 1f, windowLit).transform.localScale = new Vector3(0.5f, 1.1f, 1.1f);
@@ -50,8 +51,8 @@ namespace TheDeep.EditorTools
 
             // Conning tower ("sail") with hatch, planes, mast and name.
             float sailTop = HullY + HullRadius + 1.5f;
-            Box("Sail", t, new Vector3(0.8f, sailTop - 0.8f, 0), new Vector3(2.6f, 1.6f, 1.0f), hullPaintSmall, collider: false);
-            Cylinder("Sail_Front", t, new Vector3(2.1f, sailTop - 0.8f, 0), new Vector3(1.0f, 0.8f, 1.0f), hullPaintSmall);
+            Box("Sail", t, new Vector3(0.8f, sailTop - 0.8f, 0), new Vector3(2.6f, 1.6f, 1.0f), hullPaintSmall);
+            Cylinder("Sail_Front", t, new Vector3(2.1f, sailTop - 0.8f, 0), new Vector3(1.0f, 0.8f, 1.0f), hullPaintSmall, collider: true);
             Box("Sail_Planes", t, new Vector3(1.4f, sailTop - 0.6f, 0), new Vector3(0.8f, 0.06f, 3.0f), darkMetal, collider: false);
             Cylinder("Sail_HatchRing", t, new Vector3(0.4f, sailTop + 0.01f, 0), new Vector3(0.8f, 0.03f, 0.8f), darkMetal);
             Cylinder("Sail_Hatch", t, new Vector3(0.4f, sailTop + 0.03f, 0), new Vector3(0.65f, 0.03f, 0.65f), hullPaintSmall);
@@ -66,7 +67,7 @@ namespace TheDeep.EditorTools
             // Ballast tanks and landing skids underneath.
             foreach (float z in new[] { -1.55f, 1.55f })
             {
-                Cylinder("BallastTank", t, new Vector3(0, -0.75f, z), new Vector3(0.8f, 4.2f, 0.8f), darkMetal)
+                Cylinder("BallastTank", t, new Vector3(0, -0.75f, z), new Vector3(0.8f, 4.2f, 0.8f), darkMetal, collider: true)
                     .transform.localRotation = Quaternion.Euler(0, 0, 90);
                 Box("Skid", t, new Vector3(0, -1.55f, z), new Vector3(8f, 0.12f, 0.2f), darkMetal, collider: false);
                 foreach (float x in new[] { -3f, 3f })
@@ -74,8 +75,8 @@ namespace TheDeep.EditorTools
             }
 
             // Stern: cross fins and a slowly turning propeller.
-            Box("Fin_Vertical", t, new Vector3(-7.9f, HullY, 0), new Vector3(1.8f, 5.2f, 0.1f), hullPaintSmall, collider: false);
-            Box("Fin_Horizontal", t, new Vector3(-7.9f, HullY, 0), new Vector3(1.8f, 0.1f, 5.2f), hullPaintSmall, collider: false);
+            Box("Fin_Vertical", t, new Vector3(-7.9f, HullY, 0), new Vector3(1.8f, 5.2f, 0.1f), hullPaintSmall);
+            Box("Fin_Horizontal", t, new Vector3(-7.9f, HullY, 0), new Vector3(1.8f, 0.1f, 5.2f), hullPaintSmall);
             Cylinder("PropHub", t, new Vector3(-9.0f, HullY, 0), new Vector3(0.35f, 0.25f, 0.35f), darkMetal)
                 .transform.localRotation = Quaternion.Euler(0, 0, 90);
             var prop = Group("Propeller", t);

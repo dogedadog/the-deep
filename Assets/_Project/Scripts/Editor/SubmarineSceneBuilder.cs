@@ -214,6 +214,18 @@ namespace TheDeep.EditorTools
             Cylinder("DiveHatch_Hazard", t, new Vector3(-3.4f, 0.012f, 0), new Vector3(1.35f, 0.012f, 1.35f), hazard);
             Cylinder("DiveHatch_Door", t, new Vector3(-3.4f, 0.03f, 0), new Vector3(1.0f, 0.03f, 1.0f), painted);
             ValveWheel(t, new Vector3(-3.4f, 0.08f, 0), Vector3.up, 0.4f);
+            // Look down at the hatch and press E to dive. You drop out under the hull, feet first,
+            // low enough that the whole body clears the hull (bottom is at about y = -1.15).
+            var exitPoint = Group("WaterExitPoint", t);
+            exitPoint.localPosition = new Vector3(-3.4f, -3.4f, 0);
+            exitPoint.localRotation = Quaternion.Euler(0, 90, 0);
+            var entryPoint = Group("CabinEntryPoint", t);
+            entryPoint.localPosition = new Vector3(-2.5f, 0.05f, 0);
+            entryPoint.localRotation = Quaternion.Euler(0, 90, 0);
+            HatchTrigger("DiveHatch_Cabin", t, new Vector3(-3.4f, 0.3f, 0), new Vector3(1.1f, 0.6f, 1.1f), DiveHatch.Side.Cabin, exitPoint);
+            // Zone under the hull: swim up into it (or look at it) and press E to climb back in.
+            HatchTrigger("DiveHatch_Water", t, new Vector3(-3.4f, -1.7f, 0), new Vector3(2.0f, 1.1f, 2.0f), DiveHatch.Side.Water, entryPoint);
+
             Stencil("DIVE HATCH 01", t, new Vector3(-3.4f, 0.035f, -0.62f), Quaternion.Euler(90, 90, 0), 0.08f, new Color(0.9f, 0.85f, 0.7f));
 
             // Diver lockers along the port wall + a dive helmet on top.
@@ -247,6 +259,18 @@ namespace TheDeep.EditorTools
 
             // Depth gauge on the stern wall.
             Gauge(t, new Vector3(-4.93f, 1.5f, 0.85f), Vector3.right, 0.22f, -40f);
+        }
+
+        static void HatchTrigger(string name, Transform t, Vector3 center, Vector3 size, DiveHatch.Side side, Transform destination)
+        {
+            var go = Group(name, t);
+            go.localPosition = center;
+            var box = go.gameObject.AddComponent<BoxCollider>();
+            box.isTrigger = true;
+            box.size = size;
+            var hatch = go.gameObject.AddComponent<DiveHatch>();
+            Assign(hatch, "side", (int)side);
+            Assign(hatch, "destination", destination);
         }
 
         // ---------------------------------------------------------------- midship: consoles
