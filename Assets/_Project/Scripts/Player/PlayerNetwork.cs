@@ -33,6 +33,9 @@ namespace TheDeep.Player
         readonly NetworkVariable<float> headPitch = new(0f, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Owner);
 
         public static PlayerNetwork Local { get; private set; }
+        public Color SuitColor => SuitColors[OwnerClientId % (ulong)SuitColors.Length];
+        /// <summary>1-based crew number shown on the terminal (D1, D2...).</summary>
+        public int CrewNumber => (int)OwnerClientId + 1;
         public FirstPersonController Controller { get; private set; }
 
         void Awake() => Controller = GetComponent<FirstPersonController>();
@@ -40,7 +43,7 @@ namespace TheDeep.Player
         public override void OnNetworkSpawn()
         {
             var block = new MaterialPropertyBlock();
-            block.SetColor("_BaseColor", SuitColors[OwnerClientId % (ulong)SuitColors.Length]);
+            block.SetColor("_BaseColor", SuitColor);
             foreach (var r in suitRenderers) r.SetPropertyBlock(block);
 
             if (IsOwner)

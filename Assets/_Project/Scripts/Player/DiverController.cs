@@ -94,6 +94,7 @@ namespace TheDeep.Player
                 rb.isKinematic = true; // remote players are moved by their NetworkTransform
             }
             if (hud != null) hud.gameObject.SetActive(inWater);
+            if (IsSpawned) Debug.Log($"[Diver] Player {OwnerClientId}{(IsOwner ? " (me)" : "")} {(inWater ? "entered the water" : "is back aboard")}");
             DivingChanged?.Invoke(inWater);
         }
 

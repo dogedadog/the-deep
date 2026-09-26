@@ -125,6 +125,37 @@ MeshRenderer:
   m_SortingOrder: 0
   m_MaskInteraction: 0
   m_AdditionalVertexStreams: {fileID: 0}
+--- !u!1 &2117358148070565934
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 3568597720369374965}
+  m_Layer: 0
+  m_Name: Harness
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &3568597720369374965
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2117358148070565934}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0.85, z: -0.25}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 5054212989466854020}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &2238152886943910121
 GameObject:
   m_ObjectHideFlags: 0
@@ -633,6 +664,7 @@ GameObject:
   - component: {fileID: 3692132151086162227}
   - component: {fileID: 1990426857905011960}
   - component: {fileID: 2522197611304410039}
+  - component: {fileID: 3399387875518807296}
   - component: {fileID: 4362920364178127192}
   - component: {fileID: 3472170462637441901}
   - component: {fileID: 7813017675619623810}
@@ -658,6 +690,7 @@ Transform:
   m_Children:
   - {fileID: 7968267292869602625}
   - {fileID: 4384382696330580550}
+  - {fileID: 3568597720369374965}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!143 &2411659408885699331
@@ -787,6 +820,27 @@ MonoBehaviour:
   verticalAcceleration: 4
   sinkAcceleration: 0.25
   lookSensitivity: 0.08
+--- !u!114 &3399387875518807296
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5885648116558041882}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4104b373eb95780499e6d72ff1d40b64, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::TheDeep.Player.DiverTether
+  ShowTopMostFoldoutHeaderGroup: 1
+  harness: {fileID: 3568597720369374965}
+  ropeMaterial: {fileID: 2100000, guid: e35da780764d57e4b87624bce2c131d4, type: 2}
+  maxLength: 60
+  minLength: 1.2
+  payoutSpeed: 4
+  reelSpeed: 1.8
+  stiffness: 700
+  damping: 180
 --- !u!114 &4362920364178127192
 MonoBehaviour:
   m_ObjectHideFlags: 0

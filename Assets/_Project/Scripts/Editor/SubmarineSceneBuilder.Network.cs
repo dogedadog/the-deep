@@ -110,6 +110,14 @@ namespace TheDeep.EditorTools
             Assign(diver, "head", head);
             Assign(diver, "headlamp", lamp);
 
+            // Tether clips onto the back of the harness, under the air tank.
+            var harness = Group("Harness", player.transform);
+            harness.localPosition = new Vector3(0, 0.85f, -0.25f);
+            var tether = player.AddComponent<DiverTether>();
+            Assign(tether, "harness", harness);
+            // High-visibility yellow safety line with a faint reflective sheen, so it reads in the dark.
+            Assign(tether, "ropeMaterial", Mat("Tether_HiVis", null, new Color(0.95f, 0.78f, 0.12f), smoothness: 0.4f, emission: new Color(0.09f, 0.07f, 0.01f)));
+
             // Networking: owner moves itself; everyone else interpolates.
             player.AddComponent<NetworkObject>();
             var nt = player.AddComponent<NetworkTransform>();
@@ -154,6 +162,8 @@ namespace TheDeep.EditorTools
                 EnableSceneManagement = true,
             };
             manager.NetworkConfig.Prefabs.NetworkPrefabsLists.Add(prefabs);
+            // Headroom for hitches (loading, alt-tab) so packets aren't dropped.
+            go.GetComponent<UnityTransport>().MaxPacketQueueSize = 512;
 
             new GameObject("SessionManager", typeof(SessionManager));
             var menu = new GameObject("ConnectionMenu").AddComponent<ConnectionMenu>();

@@ -115,8 +115,13 @@ namespace TheDeep.EditorTools
             Box("Arm_Lower", t, new Vector3(6.35f, -1.65f, -0.7f), new Vector3(0.12f, 0.5f, 0.12f), darkMetal, collider: false, worldUV: false);
             Box("Arm_Claw", t, new Vector3(6.35f, -1.95f, -0.7f), new Vector3(0.2f, 0.12f, 0.08f), brass, collider: false, worldUV: false);
 
-            // Tether fairlead under the winch, where the divers' rope will leave the sub.
-            Cylinder("TetherFairlead", t, new Vector3(4.2f, -0.95f, -0.6f), new Vector3(0.3f, 0.15f, 0.3f), darkMetal);
+            // Tether fairlead beside the dive hatch, where divers' ropes leave the hull (reeling in
+            // brings a diver back to the hatch).
+            Cylinder("TetherFairlead", t, new Vector3(-2.4f, -1.1f, 0.55f), new Vector3(0.3f, 0.15f, 0.3f), darkMetal);
+            var anchorPoint = Group("TetherAnchor", t);
+            anchorPoint.localPosition = new Vector3(-2.4f, -1.22f, 0.55f);
+            var anchor = anchorPoint.gameObject.AddComponent<TetherAnchor>();
+            Assign(anchor, "seafloorY", SeafloorY);
 
             // Hull cameras, viewable from the terminal's camera app.
             var cams = Group("HullCameras", t);
@@ -124,7 +129,7 @@ namespace TheDeep.EditorTools
             HullCamera(cams, darkMetal, 2, "KEEL / DIVE HATCH", new Vector3(-1.6f, -1.4f, 0.3f), new Vector3(-4.5f, -6f, 0f), light: false);
             HullCamera(cams, darkMetal, 3, "SAIL / AFT", new Vector3(-0.35f, 5.5f, 0f), new Vector3(-9f, 1.5f, 0f), light: true);
             HullCamera(cams, darkMetal, 4, "STARBOARD", new Vector3(4.6f, 2.4f, -2.45f), new Vector3(-6f, 1.2f, -3.2f), light: true);
-            HullCamera(cams, darkMetal, 5, "WINCH / TETHER", new Vector3(5.3f, -1.0f, -1.6f), new Vector3(3.8f, -3.5f, -0.3f), light: true);
+            HullCamera(cams, darkMetal, 5, "TETHER / FAIRLEAD", new Vector3(-0.9f, -1.5f, 1.6f), new Vector3(-2.9f, -3.6f, 0.2f), light: true);
             HullCamera(cams, darkMetal, 6, "AFT / PROPELLER", new Vector3(-6.4f, 3.9f, 1.5f), new Vector3(-9.3f, 1.0f, -0.4f), light: true);
 
             // Hull shell and its parts shouldn't throw shadows onto the interior lights' surfaces.

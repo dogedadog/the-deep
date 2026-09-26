@@ -82,7 +82,7 @@ namespace TheDeep.EditorTools
             notePaper = Mat("Sub_NotePaper", null, new Color(0.8f, 0.72f, 0.3f));
             yellowTank = Mat("Sub_TankYellow", null, new Color(0.75f, 0.58f, 0.08f), metallic: 0.3f, smoothness: 0.4f);
             redPaint = Mat("Sub_RedPaint", null, new Color(0.5f, 0.08f, 0.05f), metallic: 0.2f);
-            glassDark = Mat("Sub_PortholeGlass", null, new Color(0.01f, 0.03f, 0.04f), smoothness: 0.9f, emission: new Color(0.004f, 0.016f, 0.022f));
+            glassDark = Mat("Sub_PortholeGlass", null, new Color(0.01f, 0.03f, 0.04f), smoothness: 0.9f, emission: Color.black);
             gaugeFace = Mat("Sub_GaugeFace", null, new Color(0.8f, 0.78f, 0.65f), emission: new Color(0.25f, 0.24f, 0.18f));
 
             lampOn = Mat("Sub_LampWarm", null, new Color(1f, 0.8f, 0.5f), emission: new Color(1.5f, 1.0f, 0.5f));
