@@ -28,8 +28,10 @@ namespace TheDeep.Player
         {
             Controller = GetComponent<FirstPersonController>();
             Pixelation = playerCamera.GetComponent<PixelatedCamera>();
-            BuildHud();
         }
+
+        // Start (not Awake) so the HUD is only built for the local player, whose interactor gets enabled.
+        void Start() => BuildHud();
 
         void Update()
         {

@@ -334,7 +334,8 @@ namespace TheDeep.EditorTools
             volume.sharedProfile = profile;
         }
 
-        static void BuildDevTools(GameObject player, Transform sub)
+        /// <summary>Orbit camera around the sub: title-menu backdrop, and the V-key exterior view in game.</summary>
+        static ExteriorPreviewCamera BuildDevTools(Transform sub)
         {
             var center = Group("OrbitCenter", sub);
             center.localPosition = new Vector3(-0.5f, HullY, 0);
@@ -348,13 +349,12 @@ namespace TheDeep.EditorTools
             cam.GetUniversalAdditionalCameraData().renderPostProcessing = true;
             var pixel = rig.AddComponent<PixelatedCamera>();
             Assign(pixel, "screenMaterial", RetroScreenMaterial());
-            rig.SetActive(false);
 
             var tools = new GameObject("DevTools");
             var preview = tools.AddComponent<ExteriorPreviewCamera>();
-            Assign(preview, "player", player);
             Assign(preview, "previewRig", rig);
             Assign(preview, "orbitCenter", center);
+            return preview;
         }
     }
 }

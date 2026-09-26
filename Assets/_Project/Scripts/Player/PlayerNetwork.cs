@@ -1,0 +1,101 @@
+using System.Collections;
+using System.Linq;
+using TheDeep.Networking;
+using Unity.Netcode;
+using Unity.Netcode.Components;
+using UnityEngine;
+using UnityEngine.Rendering;
+
+namespace TheDeep.Player
+{
+    /// <summary>
+    /// Networked player root. The owner gets the camera, controls and HUD; everyone else just sees
+    /// the suited body (tinted per player) moved by the NetworkTransform, with the head pitch synced.
+    /// </summary>
+    public class PlayerNetwork : NetworkBehaviour
+    {
+        static readonly Color[] SuitColors =
+        {
+            new(0.85f, 0.42f, 0.08f), // orange
+            new(0.85f, 0.75f, 0.12f), // yellow
+            new(0.1f, 0.55f, 0.55f),  // teal
+            new(0.7f, 0.12f, 0.1f),   // red
+            new(0.8f, 0.8f, 0.78f),   // white
+        };
+
+        [SerializeField] Transform head;
+        [SerializeField] GameObject cameraRoot;
+        [SerializeField] Renderer[] suitRenderers;
+        [SerializeField] Renderer[] bodyRenderers;
+        [SerializeField, Tooltip("Components only the owning player runs (controls, interaction).")]
+        Behaviour[] ownerOnly;
+
+        readonly NetworkVariable<float> headPitch = new(0f, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Owner);
+
+        public static PlayerNetwork Local { get; private set; }
+        public FirstPersonController Controller { get; private set; }
+
+        void Awake() => Controller = GetComponent<FirstPersonController>();
+
+        public override void OnNetworkSpawn()
+        {
+            var block = new MaterialPropertyBlock();
+            block.SetColor("_BaseColor", SuitColors[OwnerClientId % (ulong)SuitColors.Length]);
+            foreach (var r in suitRenderers) r.SetPropertyBlock(block);
+
+            if (IsOwner)
+            {
+                Local = this;
+                cameraRoot.SetActive(true);
+                foreach (var b in ownerOnly) b.enabled = true;
+                // You don't see your own body, but it still casts a shadow.
+                foreach (var r in bodyRenderers) r.shadowCastingMode = ShadowCastingMode.ShadowsOnly;
+                StartCoroutine(MoveToSpawnPoint());
+            }
+            else
+            {
+                cameraRoot.SetActive(false);
+                foreach (var b in ownerOnly) b.enabled = false;
+            }
+        }
+
+        public override void OnNetworkDespawn()
+        {
+            if (Local == this) Local = null;
+        }
+
+        /// <summary>Owner only: swap between first-person view and the dev exterior camera.</summary>
+        public void SetFirstPersonView(bool on)
+        {
+            cameraRoot.SetActive(on);
+            Controller.InputLocked = !on;
+        }
+
+        void Update()
+        {
+            if (!IsSpawned) return;
+            if (IsOwner)
+            {
+                float pitch = head.localEulerAngles.x;
+                headPitch.Value = pitch > 180f ? pitch - 360f : pitch;
+            }
+            else
+            {
+                head.localRotation = Quaternion.Euler(headPitch.Value, 0f, 0f);
+            }
+        }
+
+        IEnumerator MoveToSpawnPoint()
+        {
+            yield return null; // let NetworkTransform finish spawning first
+            var points = FindObjectsByType<PlayerSpawnPoint>(FindObjectsSortMode.None).OrderBy(p => p.Index).ToArray();
+            if (points.Length == 0) yield break;
+            var point = points[(int)(OwnerClientId % (ulong)points.Length)].transform;
+
+            var cc = GetComponent<CharacterController>();
+            cc.enabled = false;
+            GetComponent<NetworkTransform>().Teleport(point.position, point.rotation, transform.localScale);
+            cc.enabled = true;
+        }
+    }
+}

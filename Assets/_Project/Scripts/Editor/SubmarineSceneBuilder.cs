@@ -47,8 +47,9 @@ namespace TheDeep.EditorTools
             BuildInteriorDetails(Group("Details", sub));
             BuildExterior(Group("Exterior", sub));
             BuildSeafloor(new GameObject("Environment").transform);
-            var player = BuildPlayer();
-            BuildDevTools(player, sub);
+            BuildSpawnPoints(Group("SpawnPoints", sub));
+            var menuCamera = BuildDevTools(sub);
+            BuildNetworking(BuildPlayerPrefab(), menuCamera);
             new GameObject("EventSystem", typeof(EventSystem), typeof(InputSystemUIInputModule));
 
             EditorSceneManager.SaveScene(scene, ScenePath);
@@ -422,39 +423,6 @@ namespace TheDeep.EditorTools
             var station = root.gameObject.AddComponent<TerminalStation>();
             Assign(station, "viewPoint", viewPoint);
             Assign(station, "os", os);
-        }
-
-        // ---------------------------------------------------------------- player
-
-        static GameObject BuildPlayer()
-        {
-            var player = new GameObject("Player");
-            player.transform.position = new Vector3(-2f, 0.05f, 0);
-            player.transform.rotation = Quaternion.Euler(0, 90, 0);
-            var cc = player.AddComponent<CharacterController>();
-            cc.height = 1.8f;
-            cc.radius = 0.3f;
-            cc.center = new Vector3(0, 0.9f, 0);
-            var head = Group("Head", player.transform);
-            head.localPosition = new Vector3(0, 1.65f, 0);
-            var camGo = new GameObject("Camera", typeof(Camera), typeof(AudioListener));
-            camGo.tag = "MainCamera";
-            camGo.transform.SetParent(head, false);
-            var cam = camGo.GetComponent<Camera>();
-            cam.clearFlags = CameraClearFlags.SolidColor;
-            cam.backgroundColor = Color.black;
-            cam.nearClipPlane = 0.03f;
-            cam.fieldOfView = 70f;
-            UnityEngine.Rendering.Universal.CameraExtensions.GetUniversalAdditionalCameraData(cam).renderPostProcessing = true;
-
-            var pixel = camGo.AddComponent<PixelatedCamera>();
-            Assign(pixel, "screenMaterial", RetroScreenMaterial());
-
-            var fpc = player.AddComponent<FirstPersonController>();
-            Assign(fpc, "head", head);
-            var interactor = player.AddComponent<PlayerInteractor>();
-            Assign(interactor, "playerCamera", cam);
-            return player;
         }
 
         static Material RetroScreenMaterial() => ShaderMaterial("M_RetroScreen", "TheDeep/RetroScreen");

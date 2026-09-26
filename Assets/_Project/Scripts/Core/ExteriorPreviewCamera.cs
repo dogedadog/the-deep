@@ -1,15 +1,15 @@
+using TheDeep.Player;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
 namespace TheDeep.Core
 {
     /// <summary>
-    /// Dev tool: press V to swap between the player and a camera orbiting the submarine outside.
-    /// Mouse to look around, scroll to zoom. Will be replaced by real diver gameplay in step 2.
+    /// Camera orbiting the submarine outside. It's the backdrop of the title menu, and a dev tool
+    /// in-game: press V to swap your view to it (mouse to look around, scroll to zoom).
     /// </summary>
     public class ExteriorPreviewCamera : MonoBehaviour
     {
-        [SerializeField] GameObject player;
         [SerializeField] GameObject previewRig;
         [SerializeField] Transform orbitCenter;
         [SerializeField] float distance = 14f;
@@ -17,25 +17,28 @@ namespace TheDeep.Core
 
         float yaw = 210f;
         float pitch = 12f;
+        bool menuMode = true;
 
         bool Previewing => previewRig.activeSelf;
 
-        void Start() => previewRig.SetActive(false);
+        /// <summary>While the title menu is up: always show the orbit camera, slow auto-spin, no input.</summary>
+        public bool MenuMode
+        {
+            get => menuMode;
+            set
+            {
+                menuMode = value;
+                previewRig.SetActive(value);
+            }
+        }
 
         void Update()
         {
-            var keyboard = Keyboard.current;
-            if (keyboard != null && keyboard.vKey.wasPressedThisFrame)
-            {
-                bool preview = !Previewing;
-                previewRig.SetActive(preview);
-                player.SetActive(!preview);
-                Player.FirstPersonController.SetCursorLocked(true);
-            }
+            if (!menuMode) HandleToggle();
             if (!Previewing) return;
 
             var mouse = Mouse.current;
-            if (mouse != null)
+            if (!menuMode && mouse != null)
             {
                 Vector2 delta = mouse.delta.ReadValue() * 0.1f;
                 yaw += delta.x;
@@ -46,6 +49,20 @@ namespace TheDeep.Core
 
             Quaternion rot = Quaternion.Euler(pitch, yaw, 0f);
             previewRig.transform.SetPositionAndRotation(orbitCenter.position - rot * Vector3.forward * distance, rot);
+        }
+
+        void HandleToggle()
+        {
+            var keyboard = Keyboard.current;
+            var player = PlayerNetwork.Local;
+            if (keyboard == null || player == null || !keyboard.vKey.wasPressedThisFrame) return;
+            // Don't hijack the view while the player is busy (terminal, pause menu).
+            if (!Previewing && player.Controller.InputLocked) return;
+
+            bool preview = !Previewing;
+            previewRig.SetActive(preview);
+            player.SetFirstPersonView(!preview);
+            FirstPersonController.SetCursorLocked(true);
         }
     }
 }
