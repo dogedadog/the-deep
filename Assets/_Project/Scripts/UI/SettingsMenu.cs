@@ -14,12 +14,20 @@ namespace TheDeep.UI
     {
         const float RowHeight = 40f;
         const float Width = 640f;
+        const float Height = 820f;
+        const float PageTop = 90f;
 
         readonly System.Collections.Generic.List<Action> refreshers = new();
-        GameObject panel;
+        readonly System.Collections.Generic.Dictionary<GameAction, (Button button, Text text)> bindButtons = new();
+        GameObject panel, generalPage, controlsPage;
+        Button generalTab, controlsTab;
         Action onClose;
+        GameAction? capturing;
 
         public bool IsOpen => panel != null && panel.activeSelf;
+        /// <summary>True while waiting for a key to bind (Esc then cancels the rebind, not the menu).</summary>
+        public bool IsCapturing => capturing.HasValue || cancelledFrame == Time.frameCount;
+        int cancelledFrame = -1;
 
         /// <summary>Builds the (hidden) panel under <paramref name="parent"/>.</summary>
         public void Build(RectTransform parent)
@@ -31,16 +39,103 @@ namespace TheDeep.UI
             var box = RetroUI.Panel("Box", dim.transform, RetroUI.Face, raycast: true);
             var rt = box.rectTransform;
             rt.anchorMin = rt.anchorMax = rt.pivot = new Vector2(0.5f, 0.5f);
-            rt.sizeDelta = new Vector2(Width, 700);
+            rt.sizeDelta = new Vector2(Width, Height);
             RetroUI.Bevel(rt, raised: true, width: 3);
             var header = RetroUI.Panel("Header", box.transform, RetroUI.TitleBar);
             RetroUI.Place(header.rectTransform, 4, 4, Width - 8, 34);
             var title = RetroUI.Label("Text", header.transform, "SETTINGS", 20, Color.white, TextAnchor.MiddleLeft, FontStyle.Bold);
             RetroUI.Stretch(title.rectTransform, 12, 0, 0, 0);
 
-            var b = box.transform;
-            float y = 50;
-            y = Section(b, "CONTROLS", y);
+            generalTab = RetroUI.Button("GeneralTab", box.transform, "GENERAL", () => ShowPage(false), 16);
+            RetroUI.Place(generalTab.GetComponent<RectTransform>(), 20, 46, 160, 34);
+            controlsTab = RetroUI.Button("ControlsTab", box.transform, "CONTROLS / KEYS", () => ShowPage(true), 16);
+            RetroUI.Place(controlsTab.GetComponent<RectTransform>(), 186, 46, 200, 34);
+
+            generalPage = RetroUI.Stretch(RetroUI.Rect("GeneralPage", box.transform)).gameObject;
+            controlsPage = RetroUI.Stretch(RetroUI.Rect("ControlsPage", box.transform)).gameObject;
+            BuildGeneral(generalPage.transform);
+            BuildControls(controlsPage.transform);
+
+            var back = RetroUI.Button("Back", box.transform, "BACK", Close, 18);
+            RetroUI.Place(back.GetComponent<RectTransform>(), Width - 180, Height - 62, 160, 44);
+
+            ShowPage(false);
+            panel.SetActive(false);
+        }
+
+        void ShowPage(bool controls)
+        {
+            capturing = null;
+            generalPage.SetActive(!controls);
+            controlsPage.SetActive(controls);
+            generalTab.targetGraphic.color = controls ? RetroUI.Face : new Color(0.85f, 0.9f, 1f);
+            controlsTab.targetGraphic.color = controls ? new Color(0.85f, 0.9f, 1f) : RetroUI.Face;
+            RefreshAll();
+        }
+
+        void BuildControls(Transform b)
+        {
+            float y = Section(b, "KEYBINDS  (click a key, then press the new key or mouse button)", PageTop);
+            foreach (var action in Controls.All)
+            {
+                var label = RetroUI.Label("Label", b, Controls.Name(action), 16, RetroUI.Ink);
+                RetroUI.Place(label.rectTransform, 30, y, 300, 32);
+                var button = RetroUI.Button("Bind", b, "", () =>
+                {
+                    capturing = action;
+                    RefreshAll();
+                }, 15);
+                RetroUI.Place(button.GetComponent<RectTransform>(), 340, y, 260, 32);
+                bindButtons[action] = (button, button.GetComponentInChildren<Text>());
+                y += 35;
+            }
+            var hint = RetroUI.Label("Hint", b, "Esc is always pause / back.  Red = the same key is used twice.", 13, RetroUI.Shadow);
+            RetroUI.Place(hint.rectTransform, 30, y + 4, Width - 60, 20);
+            var reset = RetroUI.Button("ResetKeys", b, "RESET KEYS", () =>
+            {
+                Controls.ResetAll();
+                RefreshAll();
+            }, 16);
+            RetroUI.Place(reset.GetComponent<RectTransform>(), 20, Height - 62, 200, 44);
+
+            refreshers.Add(() =>
+            {
+                foreach (var (action, (button, text)) in bindButtons)
+                {
+                    bool waiting = capturing == action;
+                    bool clash = false;
+                    foreach (var other in Controls.All)
+                        if (other != action && Controls.Get(other).Equals(Controls.Get(action))) clash = true;
+                    text.text = waiting ? "PRESS A KEY...  (ESC CANCELS)" : Controls.Label(action);
+                    text.color = clash && !waiting ? new Color(0.8f, 0.1f, 0.05f) : RetroUI.Ink;
+                    button.targetGraphic.color = waiting ? new Color(1f, 0.9f, 0.55f) : RetroUI.Face;
+                }
+            });
+        }
+
+        void Update()
+        {
+            if (!capturing.HasValue) return;
+            var keyboard = UnityEngine.InputSystem.Keyboard.current;
+            if (keyboard != null && keyboard.escapeKey.wasPressedThisFrame)
+            {
+                cancelledFrame = Time.frameCount;
+                capturing = null;
+                RefreshAll();
+                return;
+            }
+            if (Controls.TryCapture(out var binding))
+            {
+                Controls.Rebind(capturing.Value, binding);
+                capturing = null;
+                RefreshAll();
+            }
+        }
+
+        void BuildGeneral(Transform b)
+        {
+            float y = PageTop;
+            y = Section(b, "MOUSE", y);
             y = SliderRow(b, "Mouse sensitivity", y, 0.1f, 3f, () => GameSettings.Sensitivity, v => GameSettings.Sensitivity = v, v => $"{v:0.00}x");
             y = ToggleRow(b, "Invert Y axis", y, () => GameSettings.InvertY, v => GameSettings.InvertY = v);
 
@@ -65,23 +160,20 @@ namespace TheDeep.UI
                 GameSettings.ResetToDefaults();
                 RefreshAll();
             }, 16);
-            RetroUI.Place(reset.GetComponent<RectTransform>(), 20, 700 - 62, 200, 44);
-            var back = RetroUI.Button("Back", b, "BACK", Close, 18);
-            RetroUI.Place(back.GetComponent<RectTransform>(), Width - 180, 700 - 62, 160, 44);
-
-            panel.SetActive(false);
+            RetroUI.Place(reset.GetComponent<RectTransform>(), 20, Height - 62, 200, 44);
         }
 
         public void Open(Action closed)
         {
             onClose = closed;
-            RefreshAll();
+            ShowPage(false);
             panel.SetActive(true);
             panel.transform.SetAsLastSibling();
         }
 
         public void Close()
         {
+            capturing = null;
             panel.SetActive(false);
             onClose?.Invoke();
             onClose = null;

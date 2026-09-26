@@ -53,8 +53,8 @@ namespace TheDeep.Player
 
             if (target != null && target.CanInteract(this))
             {
-                prompt.text = "[E] " + target.Prompt;
-                if (Keyboard.current != null && Keyboard.current.eKey.wasPressedThisFrame)
+                prompt.text = $"[{Controls.Label(GameAction.Interact)}] {target.Prompt}";
+                if (Controls.Pressed(GameAction.Interact))
                     target.Interact(this);
             }
             else

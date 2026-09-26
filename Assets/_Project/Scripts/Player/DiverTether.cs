@@ -1,3 +1,4 @@
+using TheDeep.Core;
 using TheDeep.Progression;
 using TheDeep.Submarine;
 using Unity.Netcode;
@@ -18,8 +19,8 @@ namespace TheDeep.Player
         [SerializeField] Material ropeMaterial;
         [SerializeField, Tooltip("Rope length with no upgrades.")] float baseMaxLength = 60f;
         [SerializeField] float minLength = 1.2f;
-        [SerializeField, Tooltip("How fast the winch lets rope out when pulled, m/s.")] float payoutSpeed = 4f;
-        [SerializeField, Tooltip("Reel-in speed, m/s.")] float reelSpeed = 1.8f;
+        [SerializeField, Tooltip("How fast the winch lets rope out when pulled, m/s.")] float payoutSpeed = 8f;
+        [SerializeField, Tooltip("Reel-in speed, m/s.")] float reelSpeed = 3f;
         [SerializeField, Tooltip("Spring strength when the rope is stretched, N per metre.")] float stiffness = 700f;
         [SerializeField, Tooltip("Resists moving away along a taut rope, N per m/s.")] float damping = 180f;
 
@@ -91,7 +92,7 @@ namespace TheDeep.Player
             if (!IsOwner || rope == null) return;
             var keyboard = Keyboard.current;
             bool wantReel = WinchReelIn ||
-                            (keyboard != null && keyboard.rKey.isPressed && !GetComponent<FirstPersonController>().InputLocked);
+                            (Controls.Held(GameAction.ReelIn) && !GetComponent<FirstPersonController>().InputLocked);
             if (reeling.Value != wantReel) reeling.Value = wantReel;
 
             float length = paidOut.Value;
@@ -124,7 +125,7 @@ namespace TheDeep.Player
             string state = reeling.Value ? "REELING IN"
                 : paidOut.Value >= MaxLength - 0.05f ? "AT LIMIT"
                 : rope.Stretch > 0.1f ? "PAYING OUT" : "SLACK";
-            return $"TETHER {paidOut.Value:00.0}/{MaxLength:0} M   TENSION [{meter}]   {state}   <size=15>(hold R to reel in)</size>";
+            return $"TETHER {paidOut.Value:00.0}/{MaxLength:0} M   TENSION [{meter}]   {state}   <size=15>(hold {Controls.Label(GameAction.ReelIn)} to reel in)</size>";
         }
     }
 }

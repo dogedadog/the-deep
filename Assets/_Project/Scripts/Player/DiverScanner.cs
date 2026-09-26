@@ -79,7 +79,7 @@ namespace TheDeep.Player
             aimed = target;
 
             var mouse = Mouse.current;
-            bool scanning = mouse != null && mouse.leftButton.isPressed && Cursor.lockState == CursorLockMode.Locked;
+            bool scanning = Controls.Held(GameAction.Scan) && Cursor.lockState == CursorLockMode.Locked;
             bool done = target != null && (held.Contains(target.Id) || (ExpeditionState.Instance != null && ExpeditionState.Instance.IsDocumented(target.Id)));
 
             if (target != null && scanning && !done)
@@ -90,7 +90,7 @@ namespace TheDeep.Player
                     held.Add(target.Id);
                     heldCount.Value = held.Count;
                     ExpeditionState.Instance?.ReportScanRpc(target.Id);
-                    Flash($"DATA RECORDED: {target.Title}  -  press T to transmit");
+                    Flash($"DATA RECORDED: {target.Title}  -  press {Controls.Label(GameAction.Transmit)} to transmit");
                     progress = 0f;
                 }
             }
@@ -100,8 +100,7 @@ namespace TheDeep.Player
             }
             SetBeam(target != null && scanning && !done, hitPoint);
 
-            var keyboard = Keyboard.current;
-            if (keyboard != null && keyboard.tKey.wasPressedThisFrame)
+            if (Controls.Pressed(GameAction.Transmit))
             {
                 float signal = SignalModel.Strength(transform.position);
                 if (held.Count == 0) Flash("NO DATA TO TRANSMIT");
@@ -187,7 +186,7 @@ namespace TheDeep.Player
                     int bars = Mathf.RoundToInt(progress * 20f);
                     text += progress > 0f
                         ? $"SCANNING [{new string('#', bars)}{new string('.', 20 - bars)}] {progress * 100f:0}%"
-                        : "HOLD LEFT MOUSE TO SCAN";
+                        : $"HOLD {Controls.Label(GameAction.Scan)} TO SCAN";
                 }
             }
             if (Time.time < flashUntil) text += (text.Length > 0 ? "\n" : "") + flash;

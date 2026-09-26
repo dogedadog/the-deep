@@ -6,7 +6,7 @@ namespace TheDeep.Core
 {
     /// <summary>
     /// Camera orbiting the submarine outside. It's the backdrop of the title menu, and a dev tool
-    /// in-game: press V to swap your view to it (mouse to look around, scroll to zoom).
+    /// in-game: press the Exterior camera key (F2) to swap your view to it (mouse to look around, scroll to zoom).
     /// </summary>
     public class ExteriorPreviewCamera : MonoBehaviour
     {
@@ -55,7 +55,7 @@ namespace TheDeep.Core
         {
             var keyboard = Keyboard.current;
             var player = PlayerNetwork.Local;
-            if (keyboard == null || player == null || !keyboard.vKey.wasPressedThisFrame) return;
+            if (keyboard == null || player == null || !Controls.Pressed(GameAction.ExteriorView)) return;
             // Don't hijack the view while the player is busy (terminal, pause menu).
             if (!Previewing && player.Controller.InputLocked) return;
 

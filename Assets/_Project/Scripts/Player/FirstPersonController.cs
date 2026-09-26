@@ -40,11 +40,11 @@ namespace TheDeep.Player
 
             if (!InputLocked && keyboard != null)
             {
-                if (keyboard.wKey.isPressed) move.y += 1;
-                if (keyboard.sKey.isPressed) move.y -= 1;
-                if (keyboard.dKey.isPressed) move.x += 1;
-                if (keyboard.aKey.isPressed) move.x -= 1;
-                sprint = keyboard.leftShiftKey.isPressed;
+                if (Controls.Held(GameAction.MoveForward)) move.y += 1;
+                if (Controls.Held(GameAction.MoveBack)) move.y -= 1;
+                if (Controls.Held(GameAction.MoveRight)) move.x += 1;
+                if (Controls.Held(GameAction.MoveLeft)) move.x -= 1;
+                sprint = Controls.Held(GameAction.Sprint);
             }
 
             // If the cursor got released (Esc in the Editor, alt-tab), clicking the game grabs it again.

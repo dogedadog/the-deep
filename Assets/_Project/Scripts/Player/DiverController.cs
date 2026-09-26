@@ -18,9 +18,9 @@ namespace TheDeep.Player
     {
         [SerializeField] Transform head;
         [SerializeField] Light headlamp;
-        [SerializeField] float swimAcceleration = 5f;
-        [SerializeField] float boostAcceleration = 9f;
-        [SerializeField] float verticalAcceleration = 4f;
+        [SerializeField] float swimAcceleration = 8f;
+        [SerializeField] float boostAcceleration = 14f;
+        [SerializeField] float verticalAcceleration = 6.5f;
         [SerializeField, Tooltip("Slight negative buoyancy, m/s^2.")] float sinkAcceleration = 0.25f;
         [SerializeField] float lookSensitivity = 0.08f;
 
@@ -131,17 +131,17 @@ namespace TheDeep.Player
             var keyboard = Keyboard.current;
             if (keyboard == null) return;
             Vector3 move = Vector3.zero;
-            if (keyboard.wKey.isPressed) move += head.forward;
-            if (keyboard.sKey.isPressed) move -= head.forward;
-            if (keyboard.dKey.isPressed) move += head.right;
-            if (keyboard.aKey.isPressed) move -= head.right;
+            if (Controls.Held(GameAction.MoveForward)) move += head.forward;
+            if (Controls.Held(GameAction.MoveBack)) move -= head.forward;
+            if (Controls.Held(GameAction.MoveRight)) move += head.right;
+            if (Controls.Held(GameAction.MoveLeft)) move -= head.right;
             float suit = Progression.CrewProgress.Instance != null
                 ? Progression.UpgradeCatalog.SwimSpeed(Progression.CrewProgress.Instance.Level(Progression.UpgradeType.SwimSpeed))
                 : 1f;
-            float accel = (keyboard.leftShiftKey.isPressed ? boostAcceleration : swimAcceleration) * suit;
+            float accel = (Controls.Held(GameAction.Sprint) ? boostAcceleration : swimAcceleration) * suit;
             swimInput = Vector3.ClampMagnitude(move, 1f) * accel;
-            if (keyboard.spaceKey.isPressed) swimInput += Vector3.up * verticalAcceleration;
-            if (keyboard.leftCtrlKey.isPressed || keyboard.cKey.isPressed) swimInput += Vector3.down * verticalAcceleration;
+            if (Controls.Held(GameAction.SwimUp)) swimInput += Vector3.up * verticalAcceleration;
+            if (Controls.Held(GameAction.SwimDown)) swimInput += Vector3.down * verticalAcceleration;
         }
 
         void FixedUpdate()
@@ -205,7 +205,7 @@ namespace TheDeep.Player
                 ? Progression.CrewProgress.Instance.Level(Progression.UpgradeType.DepthRating) : 0);
             string ratingText = depth > rating ? $"<color=#ff5040>!! BEYOND SUIT RATING ({rating} M)</color>" : $"SUIT RATED {rating} M";
             hud.text = $"DEPTH {depth:0000.0} M  ({ratingText})    HDG {heading:000}°    SPD {rb.linearVelocity.magnitude:0.0} M/S{extra}\n" +
-                       "<size=15>WASD swim   SPACE/CTRL up/down   SHIFT fast   HOLD LMB scan   T transmit   E under the hatch to climb aboard</size>";
+                       $"<size=15>{Controls.Label(GameAction.MoveForward)}{Controls.Label(GameAction.MoveLeft)}{Controls.Label(GameAction.MoveBack)}{Controls.Label(GameAction.MoveRight)} swim   {Controls.Label(GameAction.SwimUp)}/{Controls.Label(GameAction.SwimDown)} up/down   {Controls.Label(GameAction.Sprint)} fast   {Controls.Label(GameAction.Scan)} scan   {Controls.Label(GameAction.Transmit)} transmit   {Controls.Label(GameAction.Interact)} under the hatch to climb aboard</size>";
         }
     }
 }

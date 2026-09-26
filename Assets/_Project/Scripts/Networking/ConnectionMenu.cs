@@ -111,7 +111,7 @@ namespace TheDeep.Networking
             banner.gameObject.SetActive(Time.time < bannerUntil);
             if (settings.IsOpen)
             {
-                if (keyboard != null && keyboard.escapeKey.wasPressedThisFrame) settings.Close();
+                if (keyboard != null && keyboard.escapeKey.wasPressedThisFrame && !settings.IsCapturing) settings.Close();
                 return;
             }
             if (saveSlots.IsOpen)
