@@ -15,7 +15,8 @@ namespace TheDeep.EditorTools
 
         static void BuildExpeditionState()
         {
-            var go = new GameObject("ExpeditionState", typeof(NetworkObject), typeof(ExpeditionState));
+            // Current expedition (resets on surfacing) + permanent crew progress (saved), one network object.
+            var go = new GameObject("ExpeditionState", typeof(NetworkObject), typeof(ExpeditionState), typeof(TheDeep.Progression.CrewProgress));
             go.transform.position = new Vector3(0, 1.3f, 0);
         }
 

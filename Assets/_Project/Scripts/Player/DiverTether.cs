@@ -1,3 +1,4 @@
+using TheDeep.Progression;
 using TheDeep.Submarine;
 using Unity.Netcode;
 using UnityEngine;
@@ -15,7 +16,7 @@ namespace TheDeep.Player
     {
         [SerializeField] Transform harness;
         [SerializeField] Material ropeMaterial;
-        [SerializeField] float maxLength = 60f;
+        [SerializeField, Tooltip("Rope length with no upgrades.")] float baseMaxLength = 60f;
         [SerializeField] float minLength = 1.2f;
         [SerializeField, Tooltip("How fast the winch lets rope out when pulled, m/s.")] float payoutSpeed = 4f;
         [SerializeField, Tooltip("Reel-in speed, m/s.")] float reelSpeed = 1.8f;
@@ -28,7 +29,10 @@ namespace TheDeep.Player
         DiverController diver;
         TetherRope rope;
 
-        public float MaxLength => maxLength;
+        /// <summary>Longest the rope can pay out, including the crew's rope upgrade.</summary>
+        public float MaxLength => CrewProgress.Instance != null
+            ? UpgradeCatalog.RopeLength(CrewProgress.Instance.Level(UpgradeType.RopeLength))
+            : baseMaxLength;
         public float PaidOut => paidOut.Value;
         public bool IsReeling => reeling.Value;
         /// <summary>0 = slack, 1 = at its limit and straining.</summary>
@@ -71,7 +75,7 @@ namespace TheDeep.Player
             rope = go.GetComponent<TetherRope>();
             Vector3 start = anchor.AttachPoint((int)OwnerClientId);
             rope.Init(anchor, start, harness.position, ropeMaterial);
-            if (IsOwner) paidOut.Value = Mathf.Clamp(Vector3.Distance(start, harness.position) + 1.5f, minLength, maxLength);
+            if (IsOwner) paidOut.Value = Mathf.Clamp(Vector3.Distance(start, harness.position) + 1.5f, minLength, MaxLength);
             rope.Length = Mathf.Max(paidOut.Value, minLength);
             Debug.Log($"[Tether] Rope attached to player {OwnerClientId}");
         }
@@ -95,7 +99,7 @@ namespace TheDeep.Player
                 length -= reelSpeed * Time.deltaTime;
             else if (rope.Stretch > 0.1f)
                 length += payoutSpeed * Time.deltaTime; // diver is pulling: winch lets more out
-            length = Mathf.Clamp(length, minLength, maxLength);
+            length = Mathf.Clamp(length, minLength, MaxLength);
             if (!Mathf.Approximately(length, paidOut.Value)) paidOut.Value = length;
         }
 
@@ -118,9 +122,9 @@ namespace TheDeep.Player
             int bars = Mathf.RoundToInt(Tension * 10f);
             string meter = new string('|', bars) + new string('.', 10 - bars);
             string state = reeling.Value ? "REELING IN"
-                : paidOut.Value >= maxLength - 0.05f ? "AT LIMIT"
+                : paidOut.Value >= MaxLength - 0.05f ? "AT LIMIT"
                 : rope.Stretch > 0.1f ? "PAYING OUT" : "SLACK";
-            return $"TETHER {paidOut.Value:00.0}/{maxLength:0} M   TENSION [{meter}]   {state}   <size=15>(hold R to reel in)</size>";
+            return $"TETHER {paidOut.Value:00.0}/{MaxLength:0} M   TENSION [{meter}]   {state}   <size=15>(hold R to reel in)</size>";
         }
     }
 }

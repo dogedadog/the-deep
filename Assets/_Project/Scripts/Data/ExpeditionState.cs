@@ -1,13 +1,18 @@
+using System;
 using TheDeep.Core;
+using TheDeep.Player;
+using TheDeep.Progression;
+using TheDeep.Submarine;
 using Unity.Netcode;
 using UnityEngine;
 
 namespace TheDeep.Data
 {
     /// <summary>
-    /// Server-owned record of this expedition's data: which targets have been documented, every
-    /// packet divers have radioed in (and its logging status), and credits earned from submissions.
+    /// Server-owned record of the current expedition: which targets have been documented, every
+    /// packet divers have radioed in (and its logging status), credits and the account ledger.
     /// Everyone reads it; changes go through RPCs so all terminals stay in sync.
+    /// Credits live here, not in the save: they reset when the crew surfaces.
     /// </summary>
     public class ExpeditionState : NetworkBehaviour
     {
@@ -16,14 +21,17 @@ namespace TheDeep.Data
 
         NetworkList<DataPacket> packets;
         NetworkList<int> documented;
-        NetworkList<SubmissionRecord> history;
+        NetworkList<LedgerEntry> ledger;
         readonly NetworkVariable<int> credits = new();
         readonly NetworkVariable<int> submittedCount = new();
         int nextPacketId = 1;
 
         public static ExpeditionState Instance { get; private set; }
+        /// <summary>Crew-wide announcements (upgrades, surfacing), raised on every client.</summary>
+        public static event Action<string> Announced;
+
         public NetworkList<DataPacket> Packets => packets;
-        public NetworkList<SubmissionRecord> History => history;
+        public NetworkList<LedgerEntry> Ledger => ledger;
         public int Credits => credits.Value;
         public int SubmittedCount => submittedCount.Value;
         public double Now => NetworkManager != null ? NetworkManager.ServerTime.Time : 0;
@@ -33,12 +41,12 @@ namespace TheDeep.Data
             Instance = this;
             packets = new NetworkList<DataPacket>();
             documented = new NetworkList<int>();
-            history = new NetworkList<SubmissionRecord>();
+            ledger = new NetworkList<LedgerEntry>();
         }
 
         public bool IsDocumented(int targetId) => IsSpawned && documented.Contains(targetId);
 
-        /// <summary>A diver finished scanning something: nobody else can scan it again.</summary>
+        /// <summary>A diver finished scanning something: nobody else can scan it again this expedition.</summary>
         [Rpc(SendTo.Server)]
         public void ReportScanRpc(int targetId)
         {
@@ -87,7 +95,7 @@ namespace TheDeep.Data
             packets[i] = p;
         }
 
-        /// <summary>Crew submitted everything logged: it turns into credits.</summary>
+        /// <summary>Crew submitted everything logged: it turns into credits; evidence goes into the case files.</summary>
         [Rpc(SendTo.Server)]
         public void SubmitRpc()
         {
@@ -100,11 +108,57 @@ namespace TheDeep.Data
                 packets[i] = p;
                 count++;
                 earned += p.Value;
+                if (p.Category == DataCategory.Evidence && CrewProgress.Instance != null)
+                    CrewProgress.Instance.AddCaseFile(p.TargetId, p.Title.ToString());
             }
             if (count == 0) return;
             credits.Value += earned;
             submittedCount.Value += count;
-            history.Add(new SubmissionRecord { Count = count, Credits = earned });
+            ledger.Add(new LedgerEntry { Credits = earned, Label = $"DATA SUBMISSION ({count} PKT)" });
+            if (CrewProgress.Instance != null) CrewProgress.Instance.RecordEarnings(earned);
+        }
+
+        /// <summary>Server: pay for something if the account can afford it.</summary>
+        public bool TrySpend(int amount, string label)
+        {
+            if (!IsServer || amount > credits.Value) return false;
+            credits.Value -= amount;
+            ledger.Add(new LedgerEntry { Credits = -amount, Label = label });
+            return true;
+        }
+
+        /// <summary>
+        /// Host only: surface and end this expedition. Saves, pulls every diver aboard, and resets
+        /// credits and data for the next one. Unspent credits are lost.
+        /// </summary>
+        [Rpc(SendTo.Server)]
+        public void EndExpeditionRpc(RpcParams rpcParams = default)
+        {
+            if (rpcParams.Receive.SenderClientId != NetworkManager.ServerClientId) return;
+            int finished = CrewProgress.Instance != null ? CrewProgress.Instance.Expedition : 0;
+            int lost = credits.Value;
+            if (CrewProgress.Instance != null) CrewProgress.Instance.CompleteExpedition();
+
+            packets.Clear();
+            documented.Clear();
+            ledger.Clear();
+            credits.Value = 0;
+            submittedCount.Value = 0;
+            ForceAboardRpc();
+            AnnounceRpc($"EXPEDITION #{finished} COMPLETE  -  PROGRESS SAVED{(lost > 0 ? $"  -  {lost} UNSPENT CR LOST" : "")}\n" +
+                        $"EXPEDITION #{finished + 1} BEGINS");
+        }
+
+        [Rpc(SendTo.Everyone)]
+        public void AnnounceRpc(string message) => Announced?.Invoke(message);
+
+        [Rpc(SendTo.Everyone)]
+        void ForceAboardRpc()
+        {
+            var local = PlayerNetwork.Local;
+            if (local == null || DiveHatch.CabinEntry == null) return;
+            var diver = local.GetComponent<DiverController>();
+            if (diver != null && diver.IsDiving) diver.ExitWater(DiveHatch.CabinEntry);
         }
 
         void Update()

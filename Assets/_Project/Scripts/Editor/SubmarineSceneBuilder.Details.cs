@@ -128,7 +128,10 @@ namespace TheDeep.EditorTools
             go.transform.SetParent(parent, false);
             go.transform.localPosition = pos;
             var ps = go.AddComponent<ParticleSystem>();
-            ps.GetComponent<ParticleSystemRenderer>().sharedMaterial = mat;
+            var renderer = ps.GetComponent<ParticleSystemRenderer>();
+            renderer.sharedMaterial = mat;
+            // A speck right in front of the camera shouldn't balloon into a big square.
+            renderer.maxParticleSize = 0.01f;
             var main = ps.main;
             main.loop = true;
             main.prewarm = true;

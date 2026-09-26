@@ -50,20 +50,20 @@ namespace TheDeep.Data
         public override int GetHashCode() => HashCode.Combine(Id, (int)Status, FinishTime);
     }
 
-    /// <summary>A batch of data the crew submitted, for the Balance app's history.</summary>
-    public struct SubmissionRecord : INetworkSerializable, IEquatable<SubmissionRecord>
+    /// <summary>One line of the expedition account: a data submission (+) or a purchase (-).</summary>
+    public struct LedgerEntry : INetworkSerializable, IEquatable<LedgerEntry>
     {
-        public int Count;
         public int Credits;
+        public FixedString64Bytes Label;
 
         public void NetworkSerialize<T>(BufferSerializer<T> serializer) where T : IReaderWriter
         {
-            serializer.SerializeValue(ref Count);
             serializer.SerializeValue(ref Credits);
+            serializer.SerializeValue(ref Label);
         }
 
-        public bool Equals(SubmissionRecord other) => Count == other.Count && Credits == other.Credits;
-        public override bool Equals(object obj) => obj is SubmissionRecord other && Equals(other);
-        public override int GetHashCode() => HashCode.Combine(Count, Credits);
+        public bool Equals(LedgerEntry other) => Credits == other.Credits && Label.Equals(other.Label);
+        public override bool Equals(object obj) => obj is LedgerEntry other && Equals(other);
+        public override int GetHashCode() => HashCode.Combine(Credits, Label);
     }
 }

@@ -15,6 +15,14 @@ namespace TheDeep.Submarine
         [SerializeField] Side side;
         [SerializeField, Tooltip("Where you end up on the other side.")] Transform destination;
 
+        /// <summary>Where divers come back into the cabin (used when everyone is pulled aboard).</summary>
+        public static Transform CabinEntry { get; private set; }
+
+        void Awake()
+        {
+            if (side == Side.Water) CabinEntry = destination;
+        }
+
         public string Prompt => side == Side.Cabin ? "Dive" : "Climb aboard";
 
         public bool CanInteract(PlayerInteractor interactor)

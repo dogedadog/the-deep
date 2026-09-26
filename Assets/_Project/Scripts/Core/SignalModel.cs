@@ -17,10 +17,15 @@ namespace TheDeep.Core
         /// <summary>At or below this, nothing gets through.</summary>
         public const float NoSignalThreshold = 0.1f;
 
+        /// <summary>Walkie-talkie range upgrade: scales both ranges.</summary>
+        public static float RangeMultiplier { get; set; } = 1f;
+
         public static float Strength(Vector3 position)
         {
             float d = Vector3.Distance(position, SubCenter);
-            return Mathf.Clamp01(1f - (d - FullStrengthRange) / (DeadRange - FullStrengthRange));
+            float full = FullStrengthRange * RangeMultiplier;
+            float dead = DeadRange * RangeMultiplier;
+            return Mathf.Clamp01(1f - (d - full) / (dead - full));
         }
 
         public static string Bars(float strength)

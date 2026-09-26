@@ -836,7 +836,7 @@ MonoBehaviour:
   ShowTopMostFoldoutHeaderGroup: 1
   harness: {fileID: 3568597720369374965}
   ropeMaterial: {fileID: 2100000, guid: e35da780764d57e4b87624bce2c131d4, type: 2}
-  maxLength: 60
+  baseMaxLength: 60
   minLength: 1.2
   payoutSpeed: 4
   reelSpeed: 1.8

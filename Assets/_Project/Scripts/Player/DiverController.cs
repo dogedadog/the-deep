@@ -135,7 +135,10 @@ namespace TheDeep.Player
             if (keyboard.sKey.isPressed) move -= head.forward;
             if (keyboard.dKey.isPressed) move += head.right;
             if (keyboard.aKey.isPressed) move -= head.right;
-            float accel = keyboard.leftShiftKey.isPressed ? boostAcceleration : swimAcceleration;
+            float suit = Progression.CrewProgress.Instance != null
+                ? Progression.UpgradeCatalog.SwimSpeed(Progression.CrewProgress.Instance.Level(Progression.UpgradeType.SwimSpeed))
+                : 1f;
+            float accel = (keyboard.leftShiftKey.isPressed ? boostAcceleration : swimAcceleration) * suit;
             swimInput = Vector3.ClampMagnitude(move, 1f) * accel;
             if (keyboard.spaceKey.isPressed) swimInput += Vector3.up * verticalAcceleration;
             if (keyboard.leftCtrlKey.isPressed || keyboard.cKey.isPressed) swimInput += Vector3.down * verticalAcceleration;
@@ -197,7 +200,11 @@ namespace TheDeep.Player
                 string text = line();
                 if (!string.IsNullOrEmpty(text)) extra += "\n" + text;
             }
-            hud.text = $"DEPTH {WorldInfo.DepthAt(transform.position.y):0000.0} M    HDG {heading:000}°    SPD {rb.linearVelocity.magnitude:0.0} M/S{extra}\n" +
+            float depth = WorldInfo.DepthAt(transform.position.y);
+            int rating = Progression.UpgradeCatalog.DepthRating(Progression.CrewProgress.Instance != null
+                ? Progression.CrewProgress.Instance.Level(Progression.UpgradeType.DepthRating) : 0);
+            string ratingText = depth > rating ? $"<color=#ff5040>!! BEYOND SUIT RATING ({rating} M)</color>" : $"SUIT RATED {rating} M";
+            hud.text = $"DEPTH {depth:0000.0} M  ({ratingText})    HDG {heading:000}°    SPD {rb.linearVelocity.magnitude:0.0} M/S{extra}\n" +
                        "<size=15>WASD swim   SPACE/CTRL up/down   SHIFT fast   HOLD LMB scan   T transmit   E under the hatch to climb aboard</size>";
         }
     }

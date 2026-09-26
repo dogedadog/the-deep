@@ -1,5 +1,7 @@
 using TheDeep.Core;
+using TheDeep.Data;
 using TheDeep.Player;
+using TheDeep.Progression;
 using TheDeep.UI;
 using TheDeep.UI.Terminal;
 using Unity.Netcode;
@@ -19,6 +21,9 @@ namespace TheDeep.Networking
 
         GameObject menuPanel, pausePanel;
         SettingsMenu settings;
+        SaveSlotMenu saveSlots;
+        Text banner;
+        float bannerUntil;
         InputField codeField, addressField;
         Text statusText, sessionText, pauseInfo;
         bool paused;
@@ -34,8 +39,32 @@ namespace TheDeep.Networking
             NetworkManager.Singleton.OnClientStopped += OnDisconnected;
             NetworkManager.Singleton.OnClientConnectedCallback += _ => RefreshSessionText();
             NetworkManager.Singleton.OnClientDisconnectCallback += _ => RefreshSessionText();
+            ExpeditionState.Announced += ShowBanner;
             ShowMenu(true);
             HandleCommandLine();
+        }
+
+        void OnDestroy() => ExpeditionState.Announced -= ShowBanner;
+
+        void ShowBanner(string message)
+        {
+            banner.text = message;
+            bannerUntil = Time.time + 7f;
+        }
+
+        /// <summary>Host flow: pick a save slot first, then start the session on it.</summary>
+        void ChooseSlotThenHost(bool online)
+        {
+            menuPanel.SetActive(false);
+            saveSlots.Open(online ? "HOST ONLINE  -  CHOOSE EXPEDITION LOG" : "HOST LOCAL  -  CHOOSE EXPEDITION LOG",
+                async (slot, startNew) =>
+                {
+                    SaveSystem.Use(slot, startNew);
+                    menuPanel.SetActive(true);
+                    if (online) await Sessions.HostOnline();
+                    else Sessions.HostLocal();
+                },
+                () => menuPanel.SetActive(true));
         }
 
         /// <summary>
@@ -79,9 +108,15 @@ namespace TheDeep.Networking
         void Update()
         {
             var keyboard = Keyboard.current;
+            banner.gameObject.SetActive(Time.time < bannerUntil);
             if (settings.IsOpen)
             {
                 if (keyboard != null && keyboard.escapeKey.wasPressedThisFrame) settings.Close();
+                return;
+            }
+            if (saveSlots.IsOpen)
+            {
+                if (keyboard != null && keyboard.escapeKey.wasPressedThisFrame) { saveSlots.Close(); menuPanel.SetActive(true); }
                 return;
             }
             if (!Connected) return;
@@ -109,7 +144,8 @@ namespace TheDeep.Networking
             if (!Connected) return "";
             string where = Sessions.IsOnline ? $"JOIN CODE  {Sessions.JoinCode}" : "LOCAL SESSION";
             int count = NetworkManager.Singleton.IsServer ? NetworkManager.Singleton.ConnectedClientsIds.Count : -1;
-            return count > 0 ? $"{where}   |   CREW {count}/{SessionManager.MaxPlayers}" : where;
+            string expedition = CrewProgress.Instance != null && CrewProgress.Instance.IsSpawned ? $"EXPEDITION #{CrewProgress.Instance.Expedition}   |   " : "";
+            return expedition + (count > 0 ? $"{where}   |   CREW {count}/{SessionManager.MaxPlayers}" : where);
         }
 
         // ------------------------------------------------------------------ UI
@@ -135,6 +171,13 @@ namespace TheDeep.Networking
             BuildPauseMenu(root);
             settings = gameObject.AddComponent<SettingsMenu>();
             settings.Build(root);
+            saveSlots = gameObject.AddComponent<SaveSlotMenu>();
+            saveSlots.Build(root);
+
+            banner = RetroUI.Label("Banner", root, "", 26, new Color(1f, 0.9f, 0.55f), TextAnchor.UpperCenter, FontStyle.Bold);
+            RetroUI.Stretch(banner.rectTransform, 100, 90, 100, 0);
+            banner.gameObject.AddComponent<Shadow>().effectDistance = new Vector2(2, -2);
+            banner.gameObject.SetActive(false);
         }
 
         void BuildMainMenu(RectTransform root)
@@ -158,12 +201,12 @@ namespace TheDeep.Networking
 
             var b = box.transform;
             Section(b, "ONLINE  (friends join with a code)", 52);
-            Place(RetroUI.Button("HostOnline", b, "HOST", async () => await Sessions.HostOnline(), 20), 20, 80, 160, 46);
+            Place(RetroUI.Button("HostOnline", b, "HOST", () => ChooseSlotThenHost(online: true), 20), 20, 80, 160, 46);
             codeField = Field(b, "JOIN CODE", 200, 80, 190, 46);
             Place(RetroUI.Button("JoinOnline", b, "JOIN", async () => await Sessions.JoinOnline(codeField.text), 20), 400, 80, 140, 46);
 
             Section(b, "LOCAL  (testing on this PC / LAN, no account needed)", 150);
-            Place(RetroUI.Button("HostLocal", b, "HOST", () => Sessions.HostLocal(), 20), 20, 178, 160, 46);
+            Place(RetroUI.Button("HostLocal", b, "HOST", () => ChooseSlotThenHost(online: false), 20), 20, 178, 160, 46);
             addressField = Field(b, "127.0.0.1", 200, 178, 190, 46);
             Place(RetroUI.Button("JoinLocal", b, "JOIN", () => Sessions.JoinLocal(addressField.text), 20), 400, 178, 140, 46);
 
@@ -172,7 +215,7 @@ namespace TheDeep.Networking
 
             Place(RetroUI.Button("Quit", b, "QUIT", Quit, 18), 20, 405, 120, 42);
             Place(RetroUI.Button("Settings", b, "SETTINGS", () => OpenSettings(menuPanel), 18), 150, 405, 160, 42);
-            var hint = RetroUI.Label("Hint", b, "Save slots: economy step.", 14, RetroUI.Shadow, TextAnchor.MiddleRight);
+            var hint = RetroUI.Label("Hint", b, "Hosts pick a save slot.", 14, RetroUI.Shadow, TextAnchor.MiddleRight);
             RetroUI.Place(hint.rectTransform, 320, 405, 220, 42);
         }
 
