@@ -36,14 +36,20 @@ namespace TheDeep.Networking
             HandleCommandLine();
         }
 
-        /// <summary>Testing shortcut: launch a build with -autohost, or -autojoin [address], to skip the menu.</summary>
-        void HandleCommandLine()
+        /// <summary>
+        /// Testing shortcuts to skip the menu: -autohost / -autojoin [address] (local),
+        /// -autohostonline / -joincode CODE (online).
+        /// </summary>
+        async void HandleCommandLine()
         {
             string[] args = System.Environment.GetCommandLineArgs();
+            string Next(int i) => i + 1 < args.Length && !args[i + 1].StartsWith("-") ? args[i + 1] : null;
             for (int i = 0; i < args.Length; i++)
             {
                 if (args[i] == "-autohost") Sessions.HostLocal();
-                if (args[i] == "-autojoin") Sessions.JoinLocal(i + 1 < args.Length && !args[i + 1].StartsWith("-") ? args[i + 1] : "127.0.0.1");
+                if (args[i] == "-autojoin") Sessions.JoinLocal(Next(i) ?? "127.0.0.1");
+                if (args[i] == "-autohostonline") await Sessions.HostOnline();
+                if (args[i] == "-joincode" && Next(i) != null) await Sessions.JoinOnline(Next(i));
             }
         }
 
