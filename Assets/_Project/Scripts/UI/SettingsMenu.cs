@@ -150,6 +150,9 @@ namespace TheDeep.UI
 
             y = Section(b, "AUDIO", y + 6);
             y = SliderRow(b, "Master volume", y, 0f, 1f, () => GameSettings.MasterVolume, v => GameSettings.MasterVolume = v, v => $"{v * 100f:0}%");
+            y = SliderRow(b, "Voice chat volume", y, 0f, 2f, () => GameSettings.VoiceVolume, v => GameSettings.VoiceVolume = v, v => $"{v * 100f:0}%");
+            y = CycleRow(b, "Microphone", y, () => GameSettings.MicDeviceLabel, d => GameSettings.MicDevice += d);
+            y = SliderRow(b, "Mic sensitivity", y, 0f, 1f, () => GameSettings.MicSensitivity, v => GameSettings.MicSensitivity = v, v => $"{v * 100f:0}%");
 
 #if UNITY_EDITOR
             var note = RetroUI.Label("Note", b, "Window mode and resolution only apply in the built game.", 13, RetroUI.Shadow);

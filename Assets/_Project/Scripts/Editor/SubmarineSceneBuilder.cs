@@ -446,6 +446,7 @@ namespace TheDeep.EditorTools
             screenGo.AddComponent<BalanceApp>();
             screenGo.AddComponent<CaseFilesApp>();
             screenGo.AddComponent<NavApp>();
+            screenGo.AddComponent<RadioApp>();
             var os = screenGo.AddComponent<TerminalOS>();
 
             PointLight("ScreenGlow", root, new Vector3(0, 1.0f, -0.6f), new Color(0.4f, 0.8f, 0.8f), 0.25f, 1.8f, false);

@@ -138,6 +138,26 @@ namespace TheDeep.EditorTools
             Assign(scanner, "head", head);
             Assign(scanner, "beamMaterial", Mat("Scanner_Beam", null, new Color(0.4f, 0.95f, 1f), emission: new Color(0.6f, 2f, 2.4f)));
 
+            // Voice: helmet radio light (red while transmitting) and bubbles when talking underwater.
+            var radioLed = Sphere("RadioLight", head, new Vector3(0.17f, 0.08f, 0.02f), 0.05f, lampRed);
+            radioLed.GetComponent<Renderer>().enabled = false;
+            var bubbleSystem = Particles("TalkBubbles", head, new Vector3(0f, 0.05f, 0.2f), ParticleMat("P_Bubbles", false));
+            var bubbleMain = bubbleSystem.main;
+            bubbleMain.prewarm = false;
+            bubbleMain.startLifetime = 2.5f;
+            bubbleMain.startSpeed = new ParticleSystem.MinMaxCurve(0.6f, 1.2f);
+            bubbleMain.startSize = new ParticleSystem.MinMaxCurve(0.02f, 0.05f);
+            bubbleMain.startColor = new Color(0.8f, 0.9f, 1f);
+            bubbleMain.gravityModifier = -0.15f;
+            var bubbleEmission = bubbleSystem.emission;
+            bubbleEmission.rateOverTime = 0f;
+            var bubbleShape = bubbleSystem.shape;
+            bubbleShape.shapeType = ParticleSystemShapeType.Sphere;
+            bubbleShape.radius = 0.05f;
+            var voice = player.AddComponent<TheDeep.Voice.PlayerVoice>();
+            Assign(voice, "head", head);
+            Assign(voice, "radioLight", radioLed.GetComponent<Renderer>());
+            Assign(voice, "bubbles", bubbleSystem);
             // Own layer, so ropes (and later footage cameras) can ignore players.
             int playerLayer = LayerMask.NameToLayer("Player");
             foreach (var child in player.GetComponentsInChildren<Transform>(true)) child.gameObject.layer = playerLayer;
