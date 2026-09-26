@@ -17,6 +17,8 @@ namespace TheDeep.Submarine
         [SerializeField] Transform viewPoint;
         [SerializeField] TerminalOS os;
         [SerializeField] float transitionTime = 0.35f;
+        [SerializeField, Tooltip("Sharper pixel resolution while seated, so the screen text is readable.")]
+        int seatedPixelHeight = 720;
 
         PlayerInteractor user;
         bool transitioning;
@@ -31,10 +33,11 @@ namespace TheDeep.Submarine
         {
             user = interactor;
             interactor.Controller.InputLocked = true;
-            os.SetEventCamera(interactor.Camera);
+            os.SetEventCamera(interactor.EventCamera);
             Transform cam = interactor.Camera.transform;
             StartCoroutine(MoveCamera(cam, () => new Pose(viewPoint.position, viewPoint.rotation), () =>
             {
+                if (interactor.Pixelation != null) interactor.Pixelation.SetOverrideHeight(seatedPixelHeight);
                 FirstPersonController.SetCursorLocked(false);
                 os.SetInteractive(true);
             }));
@@ -51,6 +54,7 @@ namespace TheDeep.Submarine
             if (user == null || transitioning) return;
             PlayerInteractor leaving = user;
             os.SetInteractive(false);
+            if (leaving.Pixelation != null) leaving.Pixelation.SetOverrideHeight(null);
             FirstPersonController.SetCursorLocked(true);
             Transform cam = leaving.Camera.transform;
             StartCoroutine(MoveCamera(cam, () => new Pose(cam.parent.position, cam.parent.rotation), () =>

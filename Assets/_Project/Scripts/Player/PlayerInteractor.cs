@@ -1,4 +1,5 @@
 using TheDeep.Core;
+using TheDeep.Core.Rendering;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.UI;
@@ -17,10 +18,15 @@ namespace TheDeep.Player
 
         public FirstPersonController Controller { get; private set; }
         public Camera Camera => playerCamera;
+        /// <summary>May be null if the camera isn't pixelated.</summary>
+        public PixelatedCamera Pixelation { get; private set; }
+        /// <summary>Camera to use for clicking world-space UI.</summary>
+        public Camera EventCamera => Pixelation != null ? Pixelation.EventCamera : playerCamera;
 
         void Awake()
         {
             Controller = GetComponent<FirstPersonController>();
+            Pixelation = playerCamera.GetComponent<PixelatedCamera>();
             BuildHud();
         }
 
