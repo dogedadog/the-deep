@@ -1,3 +1,4 @@
+using TheDeep.Core;
 using UnityEngine;
 
 namespace TheDeep.Submarine
@@ -16,6 +17,9 @@ namespace TheDeep.Submarine
 
         readonly Vector3[] points = new Vector3[Segments + 1];
         readonly Vector3[] previous = new Vector3[Segments + 1];
+        // Reused every step so the width update allocates nothing.
+        readonly AnimationCurve widthCurve = new();
+        readonly Keyframe[] widthKeys = new Keyframe[5];
         LineRenderer line;
 
         /// <summary>Don't draw rope within this many metres of the diver (used for the diver's own rope).</summary>
@@ -98,6 +102,29 @@ namespace TheDeep.Submarine
                 while (shown > 2 && Vector3.Distance(points[shown - 1], end) < HideNearEnd) shown--;
             if (line.positionCount != shown) line.positionCount = shown;
             for (int i = 0; i < shown; i++) line.SetPosition(i, points[i]);
+            UpdateWidth(shown);
+        }
+
+        /// <summary>
+        /// Keep the line at least about a pixel wide at the pixelated resolution, so a distant rope stays
+        /// one continuous line instead of breaking into dashes. Up close it stays a 5 cm rope.
+        /// </summary>
+        void UpdateWidth(int shown)
+        {
+            var cam = Camera.main;
+            if (cam == null) return; // spectating through a camera that isn't MainCamera: keep the last widths
+            int setting = GameSettings.PixelHeight > 0 ? GameSettings.PixelHeight : Screen.height;
+            float px = 2f * Mathf.Tan(cam.fieldOfView * 0.5f * Mathf.Deg2Rad) / Mathf.Max(64, setting);
+            Vector3 eye = cam.transform.position;
+            for (int k = 0; k < widthKeys.Length; k++)
+            {
+                float t = k / (float)(widthKeys.Length - 1);
+                Vector3 p = points[Mathf.RoundToInt(t * (shown - 1))];
+                widthKeys[k] = new Keyframe(t, Mathf.Clamp(Vector3.Distance(p, eye) * px * 1.3f, 0.05f, 0.3f));
+            }
+            widthCurve.keys = widthKeys;
+            line.widthCurve = widthCurve;
+            line.widthMultiplier = 1f;
         }
     }
 }

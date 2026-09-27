@@ -18,6 +18,7 @@ namespace TheDeep.Player
     {
         [SerializeField] Transform head;
         [SerializeField] Light headlamp;
+        [SerializeField, Tooltip("Marine snow around the local diver's head, only shown in your own view.")] ParticleSystem snow;
         [SerializeField] float swimAcceleration = 8f;
         [SerializeField] float boostAcceleration = 14f;
         [SerializeField] float verticalAcceleration = 9f;
@@ -25,6 +26,9 @@ namespace TheDeep.Player
         [SerializeField] float lookSensitivity = 0.08f;
 
         readonly NetworkVariable<bool> diving = new(false, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Owner);
+
+        /// <summary>Near-frictionless suit, shared by every diver, so walls and ledges don't grab you.</summary>
+        static PhysicsMaterial waterMaterial;
 
         Rigidbody rb;
         CharacterController walker;
@@ -48,6 +52,18 @@ namespace TheDeep.Player
             swimmer = GetComponent<CapsuleCollider>();
             walking = GetComponent<FirstPersonController>();
             health = GetComponent<DiverHealth>();
+            if (waterMaterial == null)
+            {
+                waterMaterial = new PhysicsMaterial("DiverWater")
+                {
+                    dynamicFriction = 0.02f,
+                    staticFriction = 0.02f,
+                    bounciness = 0f,
+                    frictionCombine = PhysicsMaterialCombine.Minimum,
+                    bounceCombine = PhysicsMaterialCombine.Minimum,
+                };
+            }
+            if (swimmer != null) swimmer.sharedMaterial = waterMaterial;
         }
 
         public override void OnNetworkSpawn()
@@ -97,6 +113,8 @@ namespace TheDeep.Player
                 rb.isKinematic = true; // remote players are moved by their NetworkTransform
             }
             if (hud != null) hud.gameObject.SetActive(inWater);
+            // Each client only renders its own view, so only the local diver needs snow around them.
+            if (snow != null) snow.gameObject.SetActive(inWater && IsOwner);
             if (IsSpawned) Debug.Log($"[Diver] Player {OwnerClientId}{(IsOwner ? " (me)" : "")} {(inWater ? "entered the water" : "is back aboard")}");
             DivingChanged?.Invoke(inWater);
         }
@@ -145,9 +163,11 @@ namespace TheDeep.Player
                 ? Progression.UpgradeCatalog.SwimSpeed(Progression.CrewProgress.Instance.Level(Progression.UpgradeType.SwimSpeed))
                 : 1f;
             float accel = (Controls.Held(GameAction.Sprint) ? boostAcceleration : swimAcceleration) * suit;
-            swimInput = Vector3.ClampMagnitude(move, 1f) * accel;
-            if (Controls.Held(GameAction.SwimUp)) swimInput += Vector3.up * verticalAcceleration;
-            if (Controls.Held(GameAction.SwimDown)) swimInput += Vector3.down * verticalAcceleration;
+            float v = (Controls.Held(GameAction.SwimUp) ? 1f : 0f) - (Controls.Held(GameAction.SwimDown) ? 1f : 0f);
+            // One direction, clamped once: diving head-first with W+Ctrl is no faster than swimming level,
+            // and rising/sinking gets Shift and the suit upgrade too.
+            Vector3 dir = Vector3.ClampMagnitude(move, 1f) + Vector3.up * (v * verticalAcceleration / swimAcceleration);
+            swimInput = Vector3.ClampMagnitude(dir, 1.15f) * accel;
         }
 
         void FixedUpdate()

@@ -105,6 +105,30 @@ namespace TheDeep.EditorTools
             Assign(diver, "head", head);
             Assign(diver, "headlamp", lamp);
 
+            // Marine snow that travels with the diver, so it's there on the deepest ledges and the shaft floor,
+            // not only near the sub. Spawns in a shell 4-10 m out so nothing pops in right at the visor.
+            // DiverController only turns it on for the local diver while in the water.
+            var diverSnow = Particles("DiverSnow", head, Vector3.zero, ParticleMat("P_MarineSnow", false));
+            var diverSnowMain = diverSnow.main;
+            diverSnowMain.startLifetime = 14f;
+            diverSnowMain.startSpeed = 0.03f;
+            diverSnowMain.gravityModifier = 0.003f;
+            diverSnowMain.startSize = new ParticleSystem.MinMaxCurve(0.03f, 0.07f);
+            diverSnowMain.startColor = new Color(0.8f, 0.85f, 0.8f);
+            diverSnowMain.maxParticles = 900;
+            var diverSnowEmission = diverSnow.emission;
+            diverSnowEmission.rateOverTime = 45f;
+            diverSnowEmission.rateOverDistance = 3f; // keeps up with a sprinting diver
+            var diverSnowShape = diverSnow.shape;
+            diverSnowShape.shapeType = ParticleSystemShapeType.Sphere;
+            diverSnowShape.radius = 10f;
+            diverSnowShape.radiusThickness = 0.6f;
+            var diverSnowNoise = diverSnow.noise;
+            diverSnowNoise.enabled = true;
+            diverSnowNoise.strength = 0.05f;
+            diverSnow.gameObject.SetActive(false);
+            Assign(diver, "snow", diverSnow);
+
             // Air, suit crush and death (leaves a body), and the helmet camera.
             var health = player.AddComponent<DiverHealth>();
             Assign(health, "bodyPrefab", bodyPrefab);

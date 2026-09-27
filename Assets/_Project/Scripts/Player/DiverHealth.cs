@@ -1,3 +1,4 @@
+using System.Collections;
 using System.Collections.Generic;
 using TheDeep.Core;
 using TheDeep.Footage;
@@ -17,6 +18,11 @@ namespace TheDeep.Player
     public class DiverHealth : NetworkBehaviour
     {
         const float CrushSeconds = 10f;
+        /// <summary>How long the owner holds on black 'NO VITALS' before the spectator view.</summary>
+        const float DeathHoldSeconds = 1.5f;
+
+        /// <summary>Radial mask for the danger overlay: clear in the middle, opaque at the edges. Built once.</summary>
+        static Sprite edgeMask;
 
         [SerializeField] float airSeconds = 360f;
         [SerializeField] GameObject bodyPrefab;
@@ -29,7 +35,11 @@ namespace TheDeep.Player
         PlayerNetwork net;
         float air, crush;
         string causeOfDeath = "";
+        string chipNote = "";
+        Coroutine deathBeat;
         Image vignette;
+        /// <summary>Flat black over the whole view for the last seconds (the vignette's centre stays clear).</summary>
+        Image fade;
         Text warning, deathText;
 
         public bool IsDead => dead.Value;
@@ -57,15 +67,23 @@ namespace TheDeep.Player
             if (!IsOwner) return;
             if (dead.Value)
             {
-                vignette.color = new Color(0f, 0f, 0f, 0.35f);
+                // Flat dim while spectating; the death beat keeps its opaque black until it ends.
+                if (deathBeat == null)
+                {
+                    vignette.sprite = null;
+                    vignette.color = new Color(0f, 0f, 0f, 0.35f);
+                }
                 return;
             }
 
             float danger = 0f;
+            float closing = 0f; // 0..1 over the last seconds of air or suit integrity
             string text = "";
             if (diver.IsDiving)
             {
-                air -= Time.deltaTime;
+                // Boosting burns air faster.
+                bool exerting = Controls.Held(GameAction.Sprint) && !net.Controller.InputLocked && diver.Body.linearVelocity.sqrMagnitude > 1f;
+                air -= Time.deltaTime * (exerting ? 1.6f : 1f);
                 int level = CrewProgress.Instance != null ? CrewProgress.Instance.Level(UpgradeType.DepthRating) : 0;
                 bool tooDeep = WorldInfo.DepthAt(transform.position.y) > UpgradeCatalog.DepthRating(level);
                 crush = tooDeep ? crush + Time.deltaTime : Mathf.Max(0f, crush - Time.deltaTime * 2f);
@@ -81,8 +99,13 @@ namespace TheDeep.Player
                 if (Air01 < 0.25f)
                 {
                     danger = Mathf.Max(danger, 1f - Air01 / 0.25f);
-                    text += $"!! LOW AIR - {air:0}s LEFT - RETURN TO THE SUB !!\n";
+                    text += $"!! LOW AIR - {Mathf.CeilToInt(air)}s LEFT - RETURN TO THE SUB !!\n";
                 }
+
+                // Last seconds: darkness closes in and the lamp stutters (the lamp is DiverController's otherwise).
+                closing = Mathf.Max(Mathf.InverseLerp(6f, 0f, air), Mathf.InverseLerp(CrushSeconds - 3f, CrushSeconds, crush));
+                bool lampOn = closing <= 0f || Random.value > closing * 0.6f;
+                if (headlamp != null && headlamp.enabled != lampOn) headlamp.enabled = lampOn;
             }
             else
             {
@@ -94,14 +117,17 @@ namespace TheDeep.Player
             byte percent = (byte)Mathf.Clamp(Mathf.RoundToInt(air / airSeconds * 100f), 0, 100);
             if (percent != airPercent.Value) airPercent.Value = percent;
             float pulse = 0.5f + 0.5f * Mathf.Sin(Time.time * (4f + danger * 6f));
-            vignette.color = new Color(0.6f, 0f, 0f, danger * (0.25f + 0.3f * pulse));
+            var red = new Color(0.6f, 0f, 0f, danger * (0.4f + 0.45f * pulse));
+            vignette.color = closing > 0f ? Color.Lerp(red, Color.black, closing) : red;
+            fade.color = new Color(0f, 0f, 0f, closing * closing * 0.95f);
         }
 
         string AirLine()
         {
             int bars = Mathf.Clamp(Mathf.RoundToInt(Air01 * 10f), 0, 10);
             string color = Air01 < 0.25f ? "#ff5040" : "#9fffc0";
-            return $"<color={color}>AIR [{new string('|', bars)}{new string('.', 10 - bars)}] {air / 60f:0}:{air % 60f:00}</color>";
+            int s = Mathf.CeilToInt(Mathf.Max(0f, air));
+            return $"<color={color}>AIR [{new string('|', bars)}{new string('.', 10 - bars)}] {s / 60}:{s % 60:00}</color>";
         }
 
         /// <summary>Owner: this diver dies here.</summary>
@@ -109,16 +135,23 @@ namespace TheDeep.Player
         {
             causeOfDeath = cause;
             var archive = FootageArchive.Instance;
-            int chipId = 0;
             var clip = GetComponent<HelmetCamera>()?.TakeChip(endsInDeath: true);
-            if (clip != null && archive != null)
-            {
-                chipId = archive.NewChipId();
-                archive.Submit(chipId, clip, ChipStatus.InBody);
-            }
+            int chipId = clip != null && archive != null ? archive.NewChipId() : 0;
+
+            // Only promise chips that exist (counted before the body takes the carried ones).
+            int carried = 0;
+            if (archive != null && archive.IsSpawned)
+                foreach (var c in archive.Chips)
+                    if (c.Status == ChipStatus.Carried && c.Carrier == OwnerClientId) carried++;
+            chipNote = chipId != 0 ? "Your camera chip is still in your suit - your crew can recover it."
+                : carried > 0 ? "The chips you carried are still in your suit - your crew can recover them."
+                : "Your camera held no footage.";
+
+            // Body and NO VITALS first; the footage upload can take a while. The chip is registered as InBody.
             DiedRpc(transform.position, transform.rotation, net.CrewNumber, chipId);
             dead.Value = true;
             ApplyDead(true);
+            if (chipId != 0) archive.Submit(chipId, clip, ChipStatus.InBody);
         }
 
         [Rpc(SendTo.Server)]
@@ -170,29 +203,51 @@ namespace TheDeep.Player
             var rb = GetComponent<Rigidbody>();
             if (isDead)
             {
-                rb.linearVelocity = Vector3.zero;
+                if (!rb.isKinematic) rb.linearVelocity = Vector3.zero; // runs twice on the owner
                 rb.isKinematic = true;
             }
             else if (diver.IsDiving) rb.isKinematic = false;
 
-            var preview = FindFirstObjectByType<ExteriorPreviewCamera>();
             if (isDead)
             {
-                net.SetFirstPersonView(false);
-                preview?.Spectate(transform);
+                // Runs twice on the owner (Die and OnValueChanged): start the beat only once.
+                if (deathBeat == null) deathBeat = StartCoroutine(DeathBeat());
             }
             else
             {
-                preview?.StopSpectating();
+                if (deathBeat != null) StopCoroutine(deathBeat);
+                deathBeat = null;
+                FindFirstObjectByType<ExteriorPreviewCamera>()?.StopSpectating();
                 net.SetFirstPersonView(true);
-            }
-            if (deathText != null)
-            {
-                deathText.gameObject.SetActive(isDead);
-                deathText.text = $"YOU DIED\n<size=22>{causeOfDeath}</size>\n\n<size=18>Your camera chip is still in your suit - your crew can recover it.\n" +
-                                 "You can still hear the radio. You'll be back aboard when the expedition ends.</size>";
+                if (vignette != null) vignette.sprite = edgeMask;
+                if (fade != null) fade.color = Color.clear;
+                if (deathText != null) deathText.gameObject.SetActive(false);
             }
             if (warning != null && isDead) warning.text = "";
+        }
+
+        /// <summary>Owner: hold on black 'NO VITALS' in first person for a moment, then cut to the spectator view.</summary>
+        IEnumerator DeathBeat()
+        {
+            if (vignette != null)
+            {
+                vignette.sprite = null;
+                vignette.color = Color.black;
+            }
+            if (fade != null) fade.color = Color.clear;
+            if (deathText != null)
+            {
+                deathText.gameObject.SetActive(true);
+                deathText.text = "NO VITALS";
+            }
+            yield return new WaitForSeconds(DeathHoldSeconds);
+
+            deathBeat = null;
+            net.SetFirstPersonView(false);
+            FindFirstObjectByType<ExteriorPreviewCamera>()?.Spectate(transform);
+            if (deathText != null)
+                deathText.text = $"YOU DIED\n<size=22>{causeOfDeath}</size>\n\n<size=18>{chipNote}\n" +
+                                 "You can still hear the radio. You'll be back aboard when the expedition ends.</size>";
         }
 
         void BuildOverlay()
@@ -216,10 +271,45 @@ namespace TheDeep.Player
             vignette = v.GetComponent<Image>();
             vignette.raycastTarget = false;
             vignette.color = Color.clear;
+            if (edgeMask == null) edgeMask = BuildEdgeMask();
+            vignette.sprite = edgeMask;
+
+            var f = new GameObject("Fade", typeof(RectTransform), typeof(Image));
+            f.transform.SetParent(canvasGo.transform, false);
+            var frt = (RectTransform)f.transform;
+            frt.anchorMin = Vector2.zero;
+            frt.anchorMax = Vector2.one;
+            frt.offsetMin = frt.offsetMax = Vector2.zero;
+            fade = f.GetComponent<Image>();
+            fade.raycastTarget = false;
+            fade.color = Color.clear;
 
             warning = MakeText(canvasGo.transform, "Warning", 26, new Color(1f, 0.35f, 0.25f), TextAnchor.UpperCenter, new Vector2(0, -120));
             deathText = MakeText(canvasGo.transform, "Death", 54, new Color(0.95f, 0.85f, 0.8f), TextAnchor.MiddleCenter, Vector2.zero);
             deathText.gameObject.SetActive(false);
+        }
+
+        /// <summary>64x64 white mask whose alpha rises from the middle to the edges, so danger closes in from the sides.</summary>
+        static Sprite BuildEdgeMask()
+        {
+            const int size = 64;
+            var tex = new Texture2D(size, size, TextureFormat.RGBA32, false)
+            {
+                name = "DangerVignette",
+                filterMode = FilterMode.Bilinear,
+                wrapMode = TextureWrapMode.Clamp,
+            };
+            var pixels = new Color32[size * size];
+            var centre = new Vector2(size * 0.5f, size * 0.5f);
+            for (int y = 0; y < size; y++)
+                for (int x = 0; x < size; x++)
+                {
+                    float r = Vector2.Distance(new Vector2(x + 0.5f, y + 0.5f), centre) / (size * 0.5f);
+                    pixels[y * size + x] = new Color(1f, 1f, 1f, Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.55f, 1.05f, r)));
+                }
+            tex.SetPixels32(pixels);
+            tex.Apply();
+            return Sprite.Create(tex, new Rect(0, 0, size, size), new Vector2(0.5f, 0.5f));
         }
 
         static Text MakeText(Transform parent, string name, int size, Color color, TextAnchor anchor, Vector2 offset)
