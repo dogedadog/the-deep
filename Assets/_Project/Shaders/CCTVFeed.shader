@@ -62,7 +62,14 @@ Shader "TheDeep/CCTVFeed"
             struct appdata { float4 vertex : POSITION; float2 uv : TEXCOORD0; fixed4 color : COLOR; };
             struct v2f { float4 pos : SV_POSITION; float2 uv : TEXCOORD0; float4 worldPos : TEXCOORD1; fixed4 color : COLOR; };
 
-            float Hash(float2 p) { return frac(sin(dot(p, float2(12.9898, 78.233))) * 43758.5453); }
+            // Sin-free hash (Dave Hoskins' hash12). A frac(sin(x) * big) hash turns into stripes or freezes
+            // once its input grows large, and _Time keeps growing all session.
+            float Hash(float2 p)
+            {
+                float3 p3 = frac(p.xyx * 0.1031);
+                p3 += dot(p3, p3.yzx + 33.33);
+                return frac((p3.x + p3.y) * p3.z);
+            }
 
             v2f vert (appdata v)
             {
@@ -85,9 +92,10 @@ Shader "TheDeep/CCTVFeed"
                 float2 uv = 0.5 + c * (1.0 + _Distortion * r2 * 4.0) / (1.0 + _Distortion);
 
                 // Occasional horizontal line jitter + a slow rolling interference band.
+                // Frame counters wrap (at a prime) so the hash inputs stay small in long sessions.
                 float row = floor(uv.y * lines.y);
-                float jitter = (Hash(float2(row, floor(t * 24.0))) - 0.5) * 0.004;
-                float band = smoothstep(0.03, 0.0, abs(frac(uv.y - t * 0.06) - 0.5));
+                float jitter = (Hash(float2(row, fmod(floor(t * 24.0), 991.0))) - 0.5) * 0.004;
+                float band = smoothstep(0.03, 0.0, abs(frac(uv.y - frac(t * 0.06)) - 0.5));
                 uv.x += jitter + band * 0.006;
 
                 float3 col;
@@ -112,7 +120,8 @@ Shader "TheDeep/CCTVFeed"
                 col *= inside;
 
                 // Full static while switching cameras / signal lost.
-                float snow = Hash(floor(i.uv * lines) + floor(t * 60.0) * 7.31);
+                float snowFrame = fmod(floor(t * 60.0), 997.0);
+                float snow = Hash(floor(i.uv * lines) + snowFrame * 7.31);
                 col = lerp(col, snow.xxx * 0.85, _Static);
 
                 fixed4 result = fixed4(saturate(col), 1) * i.color;

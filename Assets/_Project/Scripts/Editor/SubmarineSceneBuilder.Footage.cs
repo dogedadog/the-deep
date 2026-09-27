@@ -51,7 +51,17 @@ namespace TheDeep.EditorTools
         /// <summary>Dive Team 7: four bodies on the shaft floor, faded suits, their helmet cameras still in them.</summary>
         static void BuildLostDivers(GameObject bodyPrefab, Transform parent)
         {
-            var faded = Mat("Body_FadedSuit", null, new Color(0.35f, 0.36f, 0.3f), smoothness: 0.15f);
+            // Dull, dusty suits in a few different crew colours so the bodies read apart at 360p,
+            // and the tarnished brass of the old helmet on the upper ledge (made by BuildUpperShaft).
+            var faded = new[]
+            {
+                Mat("Body_FadedSuitA", null, new Color(0.42f, 0.33f, 0.22f), smoothness: 0.15f),
+                Mat("Body_FadedSuitB", null, new Color(0.4f, 0.38f, 0.22f), smoothness: 0.15f),
+                Mat("Body_FadedSuitC", null, new Color(0.3f, 0.34f, 0.3f), smoothness: 0.15f),
+            };
+            var suit = AssetDatabaseMat("Player_Suit");
+            var oldBrass = AssetDatabaseMat("Env_OldBrass");
+            if (oldBrass == null) oldBrass = Mat("Env_OldBrass", null, new Color(0.3f, 0.26f, 0.15f), metallic: 0.6f, smoothness: 0.2f);
             var rng = new System.Random(77);
             for (int i = 0; i < lostDiverSpots.Length; i++)
             {
@@ -63,8 +73,11 @@ namespace TheDeep.EditorTools
                 var so = new SerializedObject(body);
                 so.FindProperty("lostDiverIndex").intValue = i;
                 so.ApplyModifiedPropertiesWithoutUndo();
-                foreach (var r in instance.GetComponentsInChildren<Renderer>())
-                    if (r.name is "Torso" or "ArmL" or "ArmR") r.sharedMaterial = faded;
+                foreach (var r in instance.GetComponentsInChildren<Renderer>(true))
+                {
+                    if (r.sharedMaterial == suit) r.sharedMaterial = faded[i % faded.Length];
+                    else if (r.sharedMaterial == brass) r.sharedMaterial = oldBrass;
+                }
                 MakeScannable(instance, 23 + i, $"REMAINS: TEAM 7 DIVER {i + 1}", DataCategory.Evidence, 200, 5f, 1.6f);
             }
         }

@@ -121,14 +121,20 @@ namespace TheDeep.EditorTools
             anchorPoint.localPosition = new Vector3(-2.4f, -1.22f, 0.55f);
             anchorPoint.gameObject.AddComponent<TetherAnchor>();
 
-            // Hull cameras, viewable from the terminal's camera app.
+            // Hull cameras, viewable from the terminal's camera app. Each is snapped onto the hull near the
+            // given point and bolted on with a short strut.
             var cams = Group("HullCameras", t);
             HullCamera(cams, darkMetal, 1, "BOW", new Vector3(7.35f, 2.9f, 0f), new Vector3(15f, -1.5f, 0f), light: true);
             HullCamera(cams, darkMetal, 2, "KEEL / DIVE HATCH", new Vector3(-1.6f, -1.4f, 0.3f), new Vector3(-4.5f, -6f, 0f), light: false);
-            HullCamera(cams, darkMetal, 3, "SAIL / AFT", new Vector3(-0.35f, 5.5f, 0f), new Vector3(-9f, 1.5f, 0f), light: true);
+            // On top of the sail, beside the mast rather than through it.
+            HullCamera(cams, darkMetal, 3, "SAIL / AFT", new Vector3(-0.35f, 5.5f, 0.2f), new Vector3(-9f, 1.5f, 0f), light: true,
+                mount: new Vector3(-0.35f, sailTop, 0.2f));
             HullCamera(cams, darkMetal, 4, "STARBOARD", new Vector3(4.6f, 2.4f, -2.45f), new Vector3(-6f, 1.2f, -3.2f), light: true);
-            HullCamera(cams, darkMetal, 5, "TETHER / FAIRLEAD", new Vector3(-0.9f, -1.5f, 1.6f), new Vector3(-2.9f, -3.6f, 0.2f), light: true);
-            HullCamera(cams, darkMetal, 6, "AFT / PROPELLER", new Vector3(-6.4f, 3.9f, 1.5f), new Vector3(-9.3f, 1.0f, -0.4f), light: true);
+            // Keel side of the port ballast tank (clear of it and the skid), looking down past the fairlead.
+            HullCamera(cams, darkMetal, 5, "TETHER / FAIRLEAD", new Vector3(-0.9f, -1.1f, 0.8f), new Vector3(-3.2f, -2.4f, 0.4f), light: true);
+            // Up on a tall strut: closer in, the tapering tail cone hides the propeller from the lens.
+            HullCamera(cams, darkMetal, 6, "AFT / PROPELLER", new Vector3(-6.4f, 3.9f, 1.5f), new Vector3(-9.3f, 1.0f, -0.4f), light: true,
+                minStandoff: 0.75f);
 
             // Hull shell and its parts shouldn't throw shadows onto the interior lights' surfaces.
             foreach (var r in t.GetComponentsInChildren<Renderer>())
@@ -146,19 +152,12 @@ namespace TheDeep.EditorTools
             const int around = 40;
             System.IO.Directory.CreateDirectory(folder);
 
-            // Profile points (x, radius).
+            // Profile points (x, radius): 16 steps up the tail, 8 along the body, 14 round the nose.
             var profile = new System.Collections.Generic.List<Vector2>();
-            for (int i = 0; i <= 16; i++)
-            {
-                float k = i / 16f;                                  // 0 = tail tip, 1 = body start
-                profile.Add(new Vector2(-8.9f + k * 3.3f, HullRadius * Mathf.Pow(Mathf.Sin(k * Mathf.PI * 0.5f), 0.8f)));
-            }
-            for (int i = 1; i <= 8; i++) profile.Add(new Vector2(-5.6f + i * 1.4f, HullRadius));
-            for (int i = 1; i <= 14; i++)
-            {
-                float k = i / 14f;                                  // 0 = body end, 1 = nose tip
-                profile.Add(new Vector2(5.6f + k * 2.2f, HullRadius * Mathf.Sqrt(1f - k * k)));
-            }
+            Vector2 At(float x) => new Vector2(x, HullRadiusAt(x));
+            for (int i = 0; i <= 16; i++) profile.Add(At(-8.9f + i / 16f * 3.3f));
+            for (int i = 1; i <= 8; i++) profile.Add(At(-5.6f + i * 1.4f));
+            for (int i = 1; i <= 14; i++) profile.Add(At(5.6f + i / 14f * 2.2f));
 
             int ring = around + 1; // duplicate seam vertex for clean UVs
             var vertices = new Vector3[profile.Count * ring];
@@ -188,6 +187,29 @@ namespace TheDeep.EditorTools
             mesh.RecalculateBounds();
             AssetDatabase.CreateAsset(mesh, path);
             return mesh;
+        }
+
+        /// <summary>Hull radius at <paramref name="x"/>: tapered tail up to -5.6, full radius to 5.6, rounded nose to 7.8.</summary>
+        static float HullRadiusAt(float x)
+        {
+            if (x < -5.6f) return HullRadius * Mathf.Pow(Mathf.Sin(Mathf.Clamp01((x + 8.9f) / 3.3f) * Mathf.PI * 0.5f), 0.8f);
+            if (x > 5.6f)
+            {
+                float k = Mathf.Clamp01((x - 5.6f) / 2.2f);
+                return HullRadius * Mathf.Sqrt(1f - k * k);
+            }
+            return HullRadius;
+        }
+
+        /// <summary>The hull surface point at <paramref name="near"/>'s x and angle around the axis, and the outward normal there.</summary>
+        static void HullSurface(Vector3 near, out Vector3 point, out Vector3 normal)
+        {
+            float a = Mathf.Atan2(near.z, near.y - HullY);
+            var radial = new Vector3(0f, Mathf.Cos(a), Mathf.Sin(a));
+            point = new Vector3(near.x, HullY, 0f) + radial * HullRadiusAt(near.x);
+            // On the tapered nose and tail the normal leans along the axis by the profile's slope.
+            float slope = (HullRadiusAt(near.x + 0.01f) - HullRadiusAt(near.x - 0.01f)) / 0.02f;
+            normal = (radial - Vector3.right * slope).normalized;
         }
 
         static void BuildSeafloor(Transform t)
@@ -233,16 +255,49 @@ namespace TheDeep.EditorTools
         /// <summary>
         /// A small camera housing with a lens and red tally light, plus the (disabled) Camera itself,
         /// aimed at <paramref name="lookAt"/>. Cameras without nearby sub lights get their own lamp.
+        /// The pod is snapped onto the hull next to <paramref name="pos"/> and held at least
+        /// <paramref name="minStandoff"/> off it by a strut; with <paramref name="mount"/> it stays at
+        /// <paramref name="pos"/> on a strut up from that point instead.
         /// </summary>
-        static void HullCamera(Transform t, Material housing, int number, string label, Vector3 pos, Vector3 lookAt, bool light)
+        static void HullCamera(Transform t, Material housing, int number, string label, Vector3 pos, Vector3 lookAt, bool light,
+            Vector3? mount = null, float minStandoff = 0.16f)
         {
+            Vector3 foot, normal;
+            if (mount.HasValue)
+            {
+                foot = mount.Value;
+                normal = Vector3.up;
+            }
+            else
+            {
+                HullSurface(pos, out foot, out normal);
+                // Far enough out that no corner of the pod dips into the hull. The hull is convex, so staying
+                // outside its tangent plane at the foot is enough.
+                float standoff = minStandoff;
+                for (int i = 0; i < 2; i++)
+                {
+                    var facing = Quaternion.LookRotation(lookAt - (foot + normal * standoff));
+                    standoff = Mathf.Max(minStandoff, 0.05f - PodReach(facing, normal));
+                }
+                pos = foot + normal * standoff;
+            }
             Quaternion rot = Quaternion.LookRotation(lookAt - pos);
             var rig = Group($"Cam{number:00}_{label}", t);
             rig.localPosition = pos;
             rig.localRotation = rot;
 
-            Box("Housing", rig, new Vector3(0, 0, -0.1f), new Vector3(0.16f, 0.13f, 0.26f), housing, collider: false, worldUV: false);
-            Box("Mount", rig, new Vector3(0, -0.1f, -0.12f), new Vector3(0.05f, 0.1f, 0.05f), housing, collider: false, worldUV: false);
+            var housingCenter = new Vector3(0, 0, -0.1f);
+            Box("Housing", rig, housingCenter, new Vector3(0.16f, 0.13f, 0.26f), housing, collider: false, worldUV: false);
+            // Strut from a foot plate on the hull into the housing. It starts a little inside the hull so the
+            // faceted hull mesh never leaves a gap under it.
+            Vector3 up = Quaternion.Inverse(rot) * normal;
+            Vector3 footLocal = Quaternion.Inverse(rot) * (foot - pos);
+            Vector3 strutStart = footLocal - up * 0.02f;
+            Vector3 strut = housingCenter - strutStart;
+            Cylinder("Strut", rig, strutStart + strut * 0.5f, new Vector3(0.035f, strut.magnitude * 0.5f, 0.035f), housing)
+                .transform.localRotation = Quaternion.FromToRotation(Vector3.up, strut);
+            Cylinder("StrutFoot", rig, footLocal, new Vector3(0.1f, 0.015f, 0.1f), housing)
+                .transform.localRotation = Quaternion.FromToRotation(Vector3.up, up);
             Cylinder("Lens", rig, new Vector3(0, 0, 0.04f), new Vector3(0.1f, 0.02f, 0.1f), glassDark).transform.localRotation = Quaternion.Euler(90, 0, 0);
             var tally = Sphere("TallyLight", rig, new Vector3(0.05f, 0.05f, 0.03f), 0.025f, lampRed);
 
@@ -263,6 +318,21 @@ namespace TheDeep.EditorTools
 
             if (light)
                 SpotLight("CamLight", rig, new Vector3(0, 0.1f, 0f), Quaternion.identity, new Color(0.85f, 0.92f, 1f), 22f, 20f, 60f);
+        }
+
+        /// <summary>
+        /// How far a camera pod turned by <paramref name="rot"/> reaches back along <paramref name="normal"/>
+        /// from its origin (zero or negative): the lowest corner of the housing and lens.
+        /// </summary>
+        static float PodReach(Quaternion rot, Vector3 normal)
+        {
+            float lowest = 0f;
+            for (int i = 0; i < 8; i++)
+            {
+                var corner = new Vector3((i & 1) == 0 ? -0.08f : 0.08f, (i & 2) == 0 ? -0.065f : 0.065f, (i & 4) == 0 ? -0.23f : 0.06f);
+                lowest = Mathf.Min(lowest, Vector3.Dot(rot * corner, normal));
+            }
+            return lowest;
         }
 
         static void SpotLight(string name, Transform parent, Vector3 pos, Quaternion rot, Color color, float intensity, float range, float angle)

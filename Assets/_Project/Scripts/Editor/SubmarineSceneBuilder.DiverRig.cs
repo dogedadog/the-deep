@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using TheDeep.Player;
 using UnityEngine;
+using UnityEngine.Rendering;
 
 namespace TheDeep.EditorTools
 {
@@ -32,10 +33,13 @@ namespace TheDeep.EditorTools
             var finMat = Mat("Player_Fin", null, new Color(0.05f, 0.05f, 0.06f), smoothness: 0.5f);
             var lensMat = Mat("Player_ScannerLens", null, new Color(0.4f, 0.95f, 1f), emission: new Color(0.3f, 1f, 1.2f));
 
-            GameObject Part(PrimitiveType type, string name, Transform p, Vector3 pos, Vector3 scale, Material mat, bool isSuit = false)
+            // Only the big silhouette parts cast shadows (about 15 per diver): bolts, straps and lights would
+            // be a pixel of shadow each, but every one is drawn into every shadow map.
+            GameObject Part(PrimitiveType type, string name, Transform p, Vector3 pos, Vector3 scale, Material mat, bool isSuit = false, bool shadows = false)
             {
                 var go = Primitive(type, name, p, pos, scale, mat, collider: false);
                 var r = go.GetComponent<Renderer>();
+                r.shadowCastingMode = shadows ? ShadowCastingMode.On : ShadowCastingMode.Off;
                 rig.All.Add(r);
                 if (isSuit) rig.Suit.Add(r);
                 return go;
@@ -47,13 +51,13 @@ namespace TheDeep.EditorTools
                 return j;
             }
             // A limb segment hanging down from its joint.
-            void Segment(string name, Transform joint, float length, float thickness, Material mat, bool isSuit = true) =>
-                Part(PrimitiveType.Capsule, name, joint, new Vector3(0f, -length * 0.5f, 0f), new Vector3(thickness, length * 0.5f, thickness), mat, isSuit);
+            void Segment(string name, Transform joint, float length, float thickness, Material mat, bool isSuit = true, bool shadows = false) =>
+                Part(PrimitiveType.Capsule, name, joint, new Vector3(0f, -length * 0.5f, 0f), new Vector3(thickness, length * 0.5f, thickness), mat, isSuit, shadows);
 
             rig.Root = Joint("Rig", parent, new Vector3(0f, RigPivotY, 0f));
 
             // ---- torso
-            Part(PrimitiveType.Capsule, "Chest", rig.Root, new Vector3(0f, -0.2f, 0f), new Vector3(0.5f, 0.24f, 0.34f), suit, true);
+            Part(PrimitiveType.Capsule, "Chest", rig.Root, new Vector3(0f, -0.2f, 0f), new Vector3(0.5f, 0.24f, 0.34f), suit, true, shadows: true);
             Part(PrimitiveType.Cylinder, "Collar", rig.Root, new Vector3(0f, 0.02f, 0f), new Vector3(0.34f, 0.04f, 0.32f), brass);
             for (int i = 0; i < 6; i++)
             {
@@ -71,7 +75,7 @@ namespace TheDeep.EditorTools
             // Twin air tanks with a valve and a hose to the helmet.
             foreach (float x in new[] { -0.09f, 0.09f })
             {
-                Part(PrimitiveType.Capsule, "AirTank", rig.Root, new Vector3(x, -0.3f, -0.25f), new Vector3(0.16f, 0.27f, 0.16f), yellowTank);
+                Part(PrimitiveType.Capsule, "AirTank", rig.Root, new Vector3(x, -0.3f, -0.25f), new Vector3(0.16f, 0.27f, 0.16f), yellowTank, shadows: true);
                 Part(PrimitiveType.Cylinder, "TankBand", rig.Root, new Vector3(x, -0.38f, -0.25f), new Vector3(0.17f, 0.015f, 0.17f), seam);
             }
             Part(PrimitiveType.Cylinder, "Valve", rig.Root, new Vector3(0f, -0.03f, -0.25f), new Vector3(0.06f, 0.05f, 0.06f), steel);
@@ -80,7 +84,7 @@ namespace TheDeep.EditorTools
 
             // ---- hips and legs
             rig.Hips = Joint("Hips", rig.Root, new Vector3(0f, -0.5f, 0f));
-            Part(PrimitiveType.Capsule, "Belly", rig.Hips, new Vector3(0f, 0.02f, 0f), new Vector3(0.42f, 0.14f, 0.3f), suit, true);
+            Part(PrimitiveType.Capsule, "Belly", rig.Hips, new Vector3(0f, 0.02f, 0f), new Vector3(0.42f, 0.14f, 0.3f), suit, true, shadows: true);
             Part(PrimitiveType.Cylinder, "WeightBelt", rig.Hips, new Vector3(0f, -0.04f, 0f), new Vector3(0.44f, 0.035f, 0.32f), seam);
             for (int i = 0; i < 4; i++)
             {
@@ -93,14 +97,14 @@ namespace TheDeep.EditorTools
             (Transform hip, Transform knee, Transform ankle, GameObject fin) Leg(string side, float x)
             {
                 var hip = Joint("Hip" + side, rig.Hips, new Vector3(x, -0.08f, 0f));
-                Segment("Thigh" + side, hip, 0.44f, 0.17f, suit);
+                Segment("Thigh" + side, hip, 0.44f, 0.17f, suit, shadows: true);
                 var knee = Joint("Knee" + side, hip, new Vector3(0f, -0.42f, 0f));
                 Part(PrimitiveType.Sphere, "KneePad" + side, knee, new Vector3(0f, 0f, 0.06f), new Vector3(0.12f, 0.12f, 0.08f), seam);
-                Segment("Shin" + side, knee, 0.42f, 0.15f, suit);
+                Segment("Shin" + side, knee, 0.42f, 0.15f, suit, shadows: true);
                 var ankle = Joint("Ankle" + side, knee, new Vector3(0f, -0.39f, 0f));
                 Part(PrimitiveType.Cube, "Boot" + side, ankle, new Vector3(0f, -0.04f, 0.05f), new Vector3(0.13f, 0.09f, 0.26f), rubber);
                 var fin = Group("Fin" + side, ankle).gameObject;
-                Part(PrimitiveType.Cube, "FinBlade" + side, fin.transform, new Vector3(0f, -0.05f, 0.4f), new Vector3(0.2f, 0.015f, 0.5f), finMat);
+                Part(PrimitiveType.Cube, "FinBlade" + side, fin.transform, new Vector3(0f, -0.05f, 0.4f), new Vector3(0.2f, 0.015f, 0.5f), finMat, shadows: true);
                 Part(PrimitiveType.Cube, "FinRail" + side, fin.transform, new Vector3(0f, -0.04f, 0.35f), new Vector3(0.22f, 0.03f, 0.4f), finMat)
                     .transform.localScale = new Vector3(0.22f, 0.025f, 0.42f);
                 return (hip, knee, ankle, fin);
@@ -113,9 +117,9 @@ namespace TheDeep.EditorTools
             {
                 var shoulder = Joint("Shoulder" + side, rig.Root, new Vector3(x, -0.07f, 0f));
                 Part(PrimitiveType.Sphere, "ShoulderPad" + side, shoulder, Vector3.zero, new Vector3(0.17f, 0.15f, 0.17f), suit, true);
-                Segment("UpperArm" + side, shoulder, 0.3f, 0.13f, suit);
+                Segment("UpperArm" + side, shoulder, 0.3f, 0.13f, suit, shadows: true);
                 var elbow = Joint("Elbow" + side, shoulder, new Vector3(0f, -0.29f, 0f));
-                Segment("Forearm" + side, elbow, 0.28f, 0.12f, suit);
+                Segment("Forearm" + side, elbow, 0.28f, 0.12f, suit, shadows: true);
                 Part(PrimitiveType.Cylinder, "Cuff" + side, elbow, new Vector3(0f, -0.25f, 0f), new Vector3(0.12f, 0.02f, 0.12f), brass);
                 var hand = Joint("Hand" + side, elbow, new Vector3(0f, -0.28f, 0f));
                 Part(PrimitiveType.Cube, "Glove" + side, hand, new Vector3(0f, -0.06f, 0.01f), new Vector3(0.07f, 0.12f, 0.1f), rubber);
@@ -138,7 +142,7 @@ namespace TheDeep.EditorTools
             // ---- helmet: an old brass diving helmet with viewports, bolts, headlamp and camera.
             rig.Neck = Joint("Neck", rig.Root, new Vector3(0f, 0.1f, 0f));
             var helmet = rig.Neck;
-            Part(PrimitiveType.Sphere, "Helmet", helmet, new Vector3(0f, 0.2f, 0f), new Vector3(0.38f, 0.4f, 0.38f), brass);
+            Part(PrimitiveType.Sphere, "Helmet", helmet, new Vector3(0f, 0.2f, 0f), new Vector3(0.38f, 0.4f, 0.38f), brass, shadows: true);
             Part(PrimitiveType.Cylinder, "FrontPortRim", helmet, new Vector3(0f, 0.2f, 0.17f), new Vector3(0.22f, 0.03f, 0.22f), brass)
                 .transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
             Part(PrimitiveType.Cylinder, "FrontPort", helmet, new Vector3(0f, 0.2f, 0.19f), new Vector3(0.18f, 0.01f, 0.18f), glassDark)

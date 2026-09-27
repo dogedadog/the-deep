@@ -9,6 +9,7 @@ using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.InputSystem.UI;
 using UnityEngine.Rendering;
+using UnityEngine.Rendering.Universal;
 using UnityEngine.UI;
 
 namespace TheDeep.EditorTools
@@ -59,6 +60,7 @@ namespace TheDeep.EditorTools
             BuildNetworking(BuildPlayerPrefab(bodyPrefab), menuCamera, bodyPrefab);
             ApplyNormalCullingMasks();
             new GameObject("EventSystem", typeof(EventSystem), typeof(InputSystemUIInputModule));
+            TrimShadowCasters();
 
             EditorSceneManager.SaveScene(scene, ScenePath);
             // Networked objects placed in the scene get their network ID from their place in the saved
@@ -74,6 +76,7 @@ namespace TheDeep.EditorTools
             EditorSceneManager.SaveScene(scene, ScenePath);
             EditorBuildSettings.scenes = new[] { new EditorBuildSettingsScene(ScenePath, true) };
             EnsureEmissionKeywords();
+            EnsureOutputRenderer();
             AssetDatabase.SaveAssets();
             Debug.Log($"[The Deep] Built {ScenePath}");
         }
@@ -616,6 +619,81 @@ namespace TheDeep.EditorTools
             }
         }
 
+        /// <summary>
+        /// PixelatedCamera's output camera draws nothing, but on the main renderer it still runs SSAO (a
+        /// full-resolution depth-normals prepass) every frame. Give it a copy of that renderer with no features,
+        /// listed in the pipeline asset after the default one; PixelatedCamera finds it by name.
+        /// </summary>
+        static void EnsureOutputRenderer()
+        {
+            const string pipelinePath = "Assets/Settings/PC_RPAsset.asset";
+            const string sourcePath = "Assets/Settings/PC_Renderer.asset";
+            string path = "Assets/Settings/" + PixelatedCamera.OutputRendererName + ".asset";
+            var pipeline = AssetDatabase.LoadAssetAtPath<UniversalRenderPipelineAsset>(pipelinePath);
+            if (pipeline == null) return;
+
+            // A copy keeps the main renderer's settings (Forward+, so no extra shader variants).
+            var data = AssetDatabase.LoadAssetAtPath<UniversalRendererData>(path);
+            if (data == null && AssetDatabase.CopyAsset(sourcePath, path))
+                data = AssetDatabase.LoadAssetAtPath<UniversalRendererData>(path);
+            if (data == null)
+            {
+                Debug.LogWarning($"[The Deep] Couldn't create {path}; the pixel output camera keeps the default renderer.");
+                return;
+            }
+            foreach (var sub in AssetDatabase.LoadAllAssetsAtPath(path))
+                if (sub is ScriptableRendererFeature) Object.DestroyImmediate(sub, true);
+            var rendererObject = new SerializedObject(data);
+            rendererObject.FindProperty("m_RendererFeatures").ClearArray();
+            rendererObject.FindProperty("m_RendererFeatureMap").ClearArray();
+            rendererObject.ApplyModifiedPropertiesWithoutUndo();
+            data.name = PixelatedCamera.OutputRendererName;
+            data.intermediateTextureMode = IntermediateTextureMode.Auto; // render straight to the screen
+            EditorUtility.SetDirty(data);
+
+            var pipelineObject = new SerializedObject(pipeline);
+            var renderers = pipelineObject.FindProperty("m_RendererDataList");
+            for (int i = 0; i < renderers.arraySize; i++)
+                if (renderers.GetArrayElementAtIndex(i).objectReferenceValue == data) return;
+            renderers.arraySize++;
+            renderers.GetArrayElementAtIndex(renderers.arraySize - 1).objectReferenceValue = data;
+            pipelineObject.ApplyModifiedPropertiesWithoutUndo();
+            EditorUtility.SetDirty(pipeline);
+        }
+
+        /// <summary>
+        /// Every caster is drawn into each shadow cascade and lamp cube face, so glowing bits and anything
+        /// under 30 cm (a pixel or two of shadow at 360p) stop casting. Walls, floors and big props keep
+        /// theirs. Diver bodies are prefab instances and already pick their own casters (BuildDiverRig).
+        /// </summary>
+        static void TrimShadowCasters()
+        {
+            foreach (var r in Object.FindObjectsByType<MeshRenderer>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+            {
+                if (r.shadowCastingMode is ShadowCastingMode.Off or ShadowCastingMode.ShadowsOnly) continue;
+                if (PrefabUtility.IsPartOfPrefabInstance(r)) continue;
+                // Mesh bounds, not Renderer.bounds: those are empty on inactive objects.
+                var filter = r.GetComponent<MeshFilter>();
+                bool small = false;
+                if (filter != null && filter.sharedMesh != null)
+                {
+                    Vector3 size = Vector3.Scale(filter.sharedMesh.bounds.size, r.transform.lossyScale);
+                    small = Mathf.Max(Mathf.Abs(size.x), Mathf.Abs(size.y), Mathf.Abs(size.z)) < 0.3f;
+                }
+                if (small || IsBrightlyEmissive(r)) r.shadowCastingMode = ShadowCastingMode.Off;
+            }
+        }
+
+        /// <summary>True if any of the renderer's materials is clearly emissive (not just a black emission colour).</summary>
+        static bool IsBrightlyEmissive(Renderer r)
+        {
+            foreach (var mat in r.sharedMaterials)
+                if (mat != null && mat.IsKeywordEnabled("_EMISSION") && mat.HasProperty("_EmissionColor")
+                    && mat.GetColor("_EmissionColor").maxColorComponent > 0.3f)
+                    return true;
+            return false;
+        }
+
         static GameObject Box(string name, Transform parent, Vector3 pos, Vector3 scale, Material mat, bool collider = true, bool worldUV = true)
         {
             var go = Primitive(PrimitiveType.Cube, name, parent, pos, scale, mat, collider);
@@ -647,8 +725,20 @@ namespace TheDeep.EditorTools
             go.transform.localScale = scale;
             go.GetComponent<Renderer>().sharedMaterial = mat;
             if (!collider) Object.DestroyImmediate(go.GetComponent<Collider>());
+            else if ((type is PrimitiveType.Sphere or PrimitiveType.Capsule or PrimitiveType.Cylinder) && !IsUniformScale(go.transform.lossyScale))
+            {
+                // Sphere and capsule colliders scale by the largest axis, which leaves an invisible dome over
+                // a flattened rock. A mesh collider bakes the squashed shape exactly (non-convex: these never
+                // move, and a sphere has too many triangles for a convex hull).
+                Object.DestroyImmediate(go.GetComponent<Collider>());
+                var shape = go.AddComponent<MeshCollider>();
+                shape.sharedMesh = go.GetComponent<MeshFilter>().sharedMesh;
+            }
             return go;
         }
+
+        static bool IsUniformScale(Vector3 s) =>
+            Mathf.Abs(Mathf.Abs(s.x) - Mathf.Abs(s.y)) < 0.001f && Mathf.Abs(Mathf.Abs(s.y) - Mathf.Abs(s.z)) < 0.001f;
 
         static Light PointLight(string name, Transform parent, Vector3 pos, Color color, float intensity, float range, bool shadows)
         {
