@@ -71,17 +71,38 @@ namespace TheDeep.EditorTools
             return target;
         }
 
+        /// <summary>
+        /// Lowest and highest ground under a flat footprint: the centre plus 8 points on the ellipse with radii
+        /// <paramref name="radiusX"/> x <paramref name="radiusZ"/> around <paramref name="center"/>.
+        /// </summary>
+        static void FootprintHeights(Vector3 center, float radiusX, float radiusZ, out float low, out float high)
+        {
+            low = high = GroundAt(center.x, center.z, center.y);
+            for (int i = 0; i < 8; i++)
+            {
+                float a = i * Mathf.PI / 4f;
+                float h = GroundAt(center.x + Mathf.Cos(a) * radiusX, center.z + Mathf.Sin(a) * radiusZ, center.y);
+                low = Mathf.Min(low, h);
+                high = Mathf.Max(high, h);
+            }
+        }
+
         /// <summary>Rock chimney with a glowing mouth and bubbles. id 0 = scenery only (not scannable).</summary>
         static void ThermalVent(Transform t, int id, Vector3 pos, string title = "HYDROTHERMAL VENT", int value = 60)
         {
             var root = Group("ThermalVent", t);
-            root.localPosition = pos;
+            // The ground isn't flat: stand on the lowest rock under the base and reach down past it, so no
+            // edge of the chimney hangs in the water.
+            FootprintHeights(pos, 1.6f, 1.6f, out float low, out float high);
+            root.localPosition = new Vector3(pos.x, low, pos.z);
+            float sink = high - low + 0.2f;
             // Stacked rock chimney narrowing to a glowing mouth.
             float y = 0f;
             float[] radii = { 1.6f, 1.2f, 0.9f, 0.65f };
             foreach (float r in radii)
             {
-                Primitive(PrimitiveType.Cylinder, "Chimney", root, new Vector3(0, y + 0.5f, 0), new Vector3(r * 2, 0.5f, r * 2), rock, collider: true);
+                float bottom = y == 0f ? -sink : y;
+                Primitive(PrimitiveType.Cylinder, "Chimney", root, new Vector3(0, (bottom + y + 1f) * 0.5f, 0), new Vector3(r * 2, (y + 1f - bottom) * 0.5f, r * 2), rock, collider: true);
                 y += 1f;
             }
             Cylinder("VentMouth", root, new Vector3(0, y + 0.02f, 0), new Vector3(0.9f, 0.03f, 0.9f), ventGlow);
@@ -146,7 +167,12 @@ namespace TheDeep.EditorTools
         static void BrinePool(Transform t, int id, Vector3 pos)
         {
             var root = Group("BrinePool", t);
-            root.localPosition = pos;
+            // The ledge is domed: sit the pool on the highest rock under its rim and hang a rock skirt down to
+            // the lowest, so the rim reads as a raised lip and no rock pokes up through the brine.
+            FootprintHeights(pos, 2.8f, 2.2f, out float low, out float high);
+            root.localPosition = new Vector3(pos.x, high, pos.z);
+            float skirt = high - low + 0.3f;
+            Cylinder("RimSkirt", root, new Vector3(0, -skirt * 0.5f, 0), new Vector3(5.6f, skirt * 0.5f, 4.4f), rock);
             Cylinder("Rim", root, new Vector3(0, 0.05f, 0), new Vector3(5.6f, 0.05f, 4.4f), rock);
             Cylinder("Brine", root, new Vector3(0, 0.1f, 0), new Vector3(5f, 0.01f, 3.8f), brine);
             // Things that swam in and didn't swim out.

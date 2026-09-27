@@ -152,7 +152,69 @@ namespace TheDeep.EditorTools
             }
             // Faces point inward: from the wall of the first ring towards its centre.
             Vector3 inward = centers[0] - verts[0];
-            return MeshObject(name, parent, verts, uv, tris, inward, mat);
+            var go = MeshObject(name, parent, verts, uv, tris, inward, mat);
+            // Seen from outside every face is a back face, so with normal shadow casting the rock above a
+            // cave never blocks the downwelling light and cave floors glow like open water.
+            go.GetComponent<MeshRenderer>().shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.TwoSided;
+            return go;
+        }
+
+        /// <summary>
+        /// A rock face hanging from the edge of a <see cref="Heightfield"/> patch (same centre, size and cell),
+        /// so the patch reads as the top of a solid shelf instead of a sheet: every edge vertex gets a copy
+        /// <paramref name="depth"/> m lower (give or take 2 m) and 1.5 m further out, joined by outward-facing quads.
+        /// A downward-facing cap closes the bottom, so the shelf is solid from below too.
+        /// </summary>
+        static GameObject TerraceSkirt(string name, Transform parent, GameObject field, Vector3 center, float sizeX, float sizeZ,
+            float cell, float depth, int seed, Material mat)
+        {
+            int nx = Mathf.CeilToInt(sizeX / cell), nz = Mathf.CeilToInt(sizeZ / cell);
+            var top = field.GetComponent<MeshFilter>().sharedMesh.vertices;
+            // Walk the edge once around: south (+x), east (+z), north (-x), west (-z).
+            var edge = new List<int>();
+            for (int x = 0; x < nx; x++) edge.Add(x);
+            for (int z = 0; z < nz; z++) edge.Add(z * (nx + 1) + nx);
+            for (int x = nx; x > 0; x--) edge.Add(nz * (nx + 1) + x);
+            for (int z = nz; z > 0; z--) edge.Add(z * (nx + 1));
+            edge.Add(edge[0]); // close the loop with its own column so the texture wraps without a seam
+
+            // Face: a top and a bottom vertex per edge point. Cap: its own copy of the bottom ring (so the rim
+            // is a hard edge and the underside gets top-down UVs) plus a centre vertex at the average bottom height.
+            int ring = edge.Count * 2, hub = ring + edge.Count;
+            var verts = new Vector3[hub + 1];
+            var uv = new Vector2[verts.Length];
+            float along = 0f, bottomY = 0f;
+            for (int i = 0; i < edge.Count; i++)
+            {
+                Vector3 p = top[edge[i]];
+                if (i > 0) along += Vector3.Distance(p, top[edge[i - 1]]);
+                Vector3 outward = new Vector3(p.x - center.x, 0f, p.z - center.z).normalized;
+                float noiseAt = i == edge.Count - 1 ? 0f : along; // the closing column must meet the first one
+                Vector3 bottom = p + outward * 1.5f + Vector3.down * (depth + Fbm(noiseAt * 0.15f, 3.7f, seed) * 2f);
+                verts[i * 2] = p;
+                verts[i * 2 + 1] = bottom;
+                uv[i * 2] = new Vector2(along, p.y) * 0.25f;
+                uv[i * 2 + 1] = new Vector2(along, bottom.y) * 0.25f;
+                verts[ring + i] = bottom;
+                uv[ring + i] = new Vector2(bottom.x, bottom.z) * 0.25f;
+                if (i < edge.Count - 1) bottomY += bottom.y / (edge.Count - 1);
+            }
+            verts[hub] = new Vector3(center.x, bottomY, center.z);
+            uv[hub] = new Vector2(center.x, center.z) * 0.25f;
+
+            // Walking the edge anticlockwise from above, (top i, top i+1, bottom i) faces away from the centre
+            // and (bottom i, bottom i+1, centre) faces down. MeshObject only looks at the first triangle.
+            var tris = new List<int>();
+            for (int i = 0; i < edge.Count - 1; i++)
+            {
+                int a = i * 2, b = a + 1, c = a + 2, d = a + 3;
+                tris.AddRange(new[] { a, c, b, c, d, b });
+            }
+            for (int i = 0; i < edge.Count - 1; i++)
+                tris.AddRange(new[] { ring + i, ring + i + 1, hub });
+            Vector3 firstOut = (verts[0] + verts[2]) * 0.5f - center;
+            firstOut.y = 0f;
+            return MeshObject(name, parent, verts, uv, tris, firstOut, mat);
         }
 
         /// <summary>Builds the mesh (flipping triangles so the first one faces <paramref name="frontDirection"/>), saves it, adds a collider.</summary>
