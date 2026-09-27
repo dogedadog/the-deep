@@ -22,7 +22,7 @@ namespace TheDeep.EditorTools
         static readonly Vector3 Station4 = new(8f, -1130f, 0f);
         const float ShaftTop = 45f;
         const float ShaftBottom = -1215f;
-        const float WallX = 38f, WallZ = 34f;
+        const float WallX = 26f, WallZ = 22f;
         const float TerraceY = -730f;
         const float FloorY = -1200f;
 
@@ -48,6 +48,8 @@ namespace TheDeep.EditorTools
             BuildWallZone(Group("Zone2_Wall", t));
             BuildTerrace(Group("Zone3_Terrace", t));
             BuildShaftFloor(Group("Zone4_Floor", t));
+            BuildWallGlows(Group("WallGlows", t));
+            BuildBellyLight();
 
             var stations = Group("DiveStations", t);
             stationPoints = new[]
@@ -114,10 +116,10 @@ namespace TheDeep.EditorTools
         /// <summary>Ledges under the sub at station 1 (center, size). The first points of interest sit on these.</summary>
         static readonly (Vector3 center, Vector3 size)[] UpperLedges =
         {
-            (new Vector3(-29f, -18f, 4f), new Vector3(16f, 3.5f, 20f)),   // 0 west
-            (new Vector3(8f, -30f, 26f), new Vector3(22f, 3.5f, 13f)),    // 1 north
-            (new Vector3(28f, -40f, -6f), new Vector3(15f, 3.5f, 18f)),   // 2 east
-            (new Vector3(-5f, -46f, -26f), new Vector3(20f, 3.5f, 13f)),  // 3 south
+            (new Vector3(-19f, -12f, 3f), new Vector3(14f, 3.5f, 16f)),   // 0 west
+            (new Vector3(5f, -22f, 16f), new Vector3(20f, 3.5f, 12f)),    // 1 north
+            (new Vector3(19f, -30f, -5f), new Vector3(14f, 3.5f, 16f)),   // 2 east
+            (new Vector3(-3f, -38f, -16f), new Vector3(18f, 3.5f, 12f)),  // 3 south
         };
 
         /// <summary>A point on top of upper ledge <paramref name="index"/>, offset from its middle.</summary>
@@ -179,11 +181,11 @@ namespace TheDeep.EditorTools
         {
             // Ledges below the station, and things living on them.
             float s = Station2.y;
-            Slab("Ledge_Coral", t, new Vector3(-29f, s - 22f, -8f), new Vector3(15f, 3f, 16f));
-            Slab("Ledge_Beacon", t, new Vector3(12f, s - 36f, 26f), new Vector3(18f, 3f, 13f));
-            Slab("Ledge_Deep", t, new Vector3(26f, s - 48f, 10f), new Vector3(14f, 3f, 14f));
-            CoralLedge(t, 11, OnGround(-29f, -8f, s - 22f));
-            SurveyBeacon(t, 14, OnGround(12f, 26f, s - 36f));
+            Slab("Ledge_Coral", t, new Vector3(-19f, s - 22f, -6f), new Vector3(14f, 3f, 14f));
+            Slab("Ledge_Beacon", t, new Vector3(8f, s - 34f, 16f), new Vector3(18f, 3f, 12f));
+            Slab("Ledge_Deep", t, new Vector3(18f, s - 46f, 6f), new Vector3(14f, 3f, 14f));
+            CoralLedge(t, 11, OnGround(-19f, -6f, s - 22f));
+            SurveyBeacon(t, 14, OnGround(8f, 16f, s - 34f));
 
             // Inside the caves: crystals in the east one, glow-worms in the south one.
             CrystalVein(t, 12, new Vector3(WallX + 10f, s - 31f, 45f - 52f), 90f);
@@ -264,7 +266,7 @@ namespace TheDeep.EditorTools
                 Sphere("Photophore", root, new Vector3(side * 2.9f, -0.5f + (float)rng.NextDouble(), z), 0.35f, bioLight);
             }
             var drift = root.gameObject.AddComponent<Drifter>();
-            Assign(drift, "radius", 20f);
+            Assign(drift, "radius", 8f);
             Assign(drift, "secondsPerLap", 150f);
             Assign(drift, "bobHeight", 10f);
             Assign(drift, "bobSeconds", 40f);
@@ -276,16 +278,16 @@ namespace TheDeep.EditorTools
         static void BuildTerrace(Transform t)
         {
             // A huge shelf of rock sticking out of the west side of the shaft, 30 m under the station.
-            Heightfield("Terrace_Top", t, new Vector3(-22f, TerraceY, 0f), 32f, 62f, 2f, 1.2f, 0.06f, 11, deepSilt);
-            Slab("Terrace_Rock", t, new Vector3(-22f, TerraceY - 9f, 0f), new Vector3(38f, 14f, 68f));
+            Heightfield("Terrace_Top", t, new Vector3(-14f, TerraceY, 0f), 24f, 44f, 2f, 1.2f, 0.06f, 11, deepSilt);
+            Slab("Terrace_Rock", t, new Vector3(-14f, TerraceY - 9f, 0f), new Vector3(30f, 14f, 50f));
 
             float g = TerraceY;
-            WhaleFall(t, 16, OnGround(-22f, -12f, g));
-            ThermalVent(t, 17, OnGround(-26f, 18f, g), "BLACK SMOKER FIELD", 140);
-            ThermalVent(t, 0, OnGround(-20f, 24f, g));
-            ThermalVent(t, 0, OnGround(-31f, 25f, g));
-            TubeWormForest(t, 18, OnGround(-24f, 21f, g));
-            Isopod(t, 19, OnGround(-14f, 6f, g, 0.2f), OnGround(-12f, -4f, g, 0.2f));
+            WhaleFall(t, 16, OnGround(-15f, -9f, g));
+            ThermalVent(t, 17, OnGround(-18f, 14f, g), "BLACK SMOKER FIELD", 140);
+            ThermalVent(t, 0, OnGround(-12f, 17f, g));
+            ThermalVent(t, 0, OnGround(-21f, 18f, g));
+            TubeWormForest(t, 18, OnGround(-15f, 16f, g));
+            Isopod(t, 19, OnGround(-8f, 4f, g, 0.2f), OnGround(-6f, -6f, g, 0.2f));
             // Crystals in the north cave at terrace level.
             CrystalVein(t, 20, new Vector3(45f - 62f, TerraceY + 5f, WallZ + 10f), 200f);
         }
@@ -334,18 +336,18 @@ namespace TheDeep.EditorTools
 
         static void BuildShaftFloor(Transform t)
         {
-            Heightfield("Shaft_Floor", t, new Vector3(0f, FloorY, 0f), 84f, 76f, 2f, 1.2f, 0.06f, 21, deepSilt, (x, z) =>
+            Heightfield("Shaft_Floor", t, new Vector3(0f, FloorY, 0f), 60f, 52f, 2f, 1.2f, 0.06f, 21, deepSilt, (x, z) =>
             {
                 // Rubble piled up against the walls.
-                float nearX = Mathf.Max(0f, Mathf.Abs(x) - 30f), nearZ = Mathf.Max(0f, Mathf.Abs(z) - 26f);
+                float nearX = Mathf.Max(0f, Mathf.Abs(x) - 20f), nearZ = Mathf.Max(0f, Mathf.Abs(z) - 16f);
                 return (nearX * nearX + nearZ * nearZ) * 0.08f;
             });
 
             float g = FloorY;
-            DivingBellWreck(t, 21, OnGround(-12f, 8f, g));
-            StructureCluster(t, 22, OnGround(14f, -6f, g));
+            DivingBellWreck(t, 21, OnGround(-12f, 6f, g));
+            StructureCluster(t, 22, OnGround(12f, -4f, g));
             // Dive Team 7. Their bodies (and camera chips) are added by the footage step.
-            lostDiverSpots = new[] { OnGround(-18f, -4f, g), OnGround(-4f, 14f, g), OnGround(6f, -16f, g), OnGround(22f, 8f, g) };
+            lostDiverSpots = new[] { OnGround(-16f, -4f, g), OnGround(-4f, 12f, g), OnGround(6f, -12f, g), OnGround(17f, 6f, g) };
             OldRope(t, OnGround(-15f, 5f, g, 0.05f), 12, 71);
             OldRope(t, OnGround(0f, -12f, g, 0.05f), 9, 72);
         }
@@ -395,6 +397,77 @@ namespace TheDeep.EditorTools
             MakeScannable(root.gameObject, id, "STRUCTURE CLUSTER (ORIGIN UNKNOWN)", DataCategory.Structure, 300, 8f, 8f);
         }
 
+        // ------------------------------------------------------------------ depth cues
+
+        /// <summary>
+        /// Patches of glowing creatures on the walls all the way down, so the drop reads as a drop:
+        /// looking down you see them fade away into the dark.
+        /// </summary>
+        static void BuildWallGlows(Transform t)
+        {
+            var green = Mat("Creature_WallGlowGreen", null, new Color(0.3f, 1f, 0.6f), emission: new Color(0.4f, 2.6f, 1.3f));
+            var blue = Mat("Creature_WallGlowBlue", null, new Color(0.4f, 0.8f, 1f), emission: new Color(0.5f, 1.5f, 2.8f));
+            Physics.SyncTransforms();
+            var rng = new System.Random(77);
+            float R(float a, float b) => a + (float)rng.NextDouble() * (b - a);
+            var dirs = new[] { Vector3.left, Vector3.right, Vector3.forward, Vector3.back };
+            for (float y = -4f; y > FloorY + 4f; y -= 7f)
+            {
+                var dir = dirs[rng.Next(dirs.Length)];
+                var side = Vector3.Cross(dir, Vector3.up);
+                var from = new Vector3(0f, y + R(-2f, 2f), 0f) + side * R(-14f, 14f);
+                if (!RaycastWall(from, dir, out var hit)) continue;
+                var mat = rng.NextDouble() < 0.6 ? green : blue;
+                int count = rng.Next(4, 9);
+                for (int i = 0; i < count; i++)
+                {
+                    var pos = hit.point + hit.normal * 0.25f + side * R(-1.6f, 1.6f) + Vector3.up * R(-1.2f, 1.2f);
+                    var dot = Sphere("Glow", t, pos, R(0.15f, 0.35f), mat);
+                    dot.isStatic = true;
+                }
+                // Near the stations the patches light up the rock around them too.
+                if (NearStation(hit.point.y))
+                    PointLight("GlowLight", t, hit.point + hit.normal * 1.2f, mat == green ? new Color(0.3f, 1f, 0.6f) : new Color(0.4f, 0.8f, 1f), 2.5f, 9f, false);
+            }
+        }
+
+        static bool NearStation(float y)
+        {
+            foreach (float station in new[] { 0f, Station2.y, Station3.y, Station4.y })
+                if (y < station + 10f && y > station - 75f) return true;
+            return false;
+        }
+
+        static bool RaycastWall(Vector3 from, Vector3 dir, out RaycastHit wall)
+        {
+            foreach (var hit in Physics.RaycastAll(from, dir, 60f))
+                if (hit.collider.name.StartsWith("Terrain_Shaft_")) { wall = hit; return true; }
+            wall = default;
+            return false;
+        }
+
+        /// <summary>A big floodlight under the sub pointing straight down, lighting up whatever is below.</summary>
+        static void BuildBellyLight()
+        {
+            var sub = GameObject.Find("Submarine").transform;
+            var housing = Mat("Sub_LampHousing", null, new Color(0.15f, 0.15f, 0.16f), metallic: 0.6f, smoothness: 0.4f);
+            var lens = Mat("Sub_LampLens", null, new Color(1f, 0.95f, 0.8f), emission: new Color(3f, 2.8f, 2.3f));
+            Cylinder("BellyLightHousing", sub, new Vector3(-1f, -1.15f, 0f), new Vector3(0.7f, 0.12f, 0.7f), housing);
+            Cylinder("BellyLightLens", sub, new Vector3(-1f, -1.28f, 0f), new Vector3(0.55f, 0.02f, 0.55f), lens);
+            var go = new GameObject("BellyFloodlight", typeof(Light));
+            go.transform.SetParent(sub, false);
+            go.transform.localPosition = new Vector3(-1f, -1.4f, 0f);
+            go.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
+            var light = go.GetComponent<Light>();
+            light.type = LightType.Spot;
+            light.color = new Color(1f, 0.95f, 0.85f);
+            light.spotAngle = 115f;
+            light.innerSpotAngle = 60f;
+            light.range = 75f;
+            light.intensity = 900f;
+            light.shadows = LightShadows.Hard;
+        }
+
         // ------------------------------------------------------------------ navigation
 
         static void BuildNavigation(GameObject expeditionObject)
@@ -406,10 +479,10 @@ namespace TheDeep.EditorTools
             var list = so.FindProperty("stations");
             (string name, int level, float light, Color fog, float density)[] data =
             {
-                ("Upper Shaft", 0, 0.55f, new Color(0.01f, 0.035f, 0.045f), 0.04f),
-                ("The Wall", 1, 0.25f, new Color(0.006f, 0.022f, 0.032f), 0.04f),
-                ("Abyssal Terrace", 2, 0.09f, new Color(0.004f, 0.012f, 0.02f), 0.045f),
-                ("Shaft Floor", 3, 0.02f, new Color(0.001f, 0.004f, 0.008f), 0.05f),
+                ("Upper Shaft", 0, 0.85f, new Color(0.012f, 0.04f, 0.05f), 0.028f),
+                ("The Wall", 1, 0.4f, new Color(0.007f, 0.025f, 0.035f), 0.03f),
+                ("Abyssal Terrace", 2, 0.14f, new Color(0.004f, 0.013f, 0.022f), 0.034f),
+                ("Shaft Floor", 3, 0.04f, new Color(0.002f, 0.005f, 0.009f), 0.038f),
             };
             list.arraySize = data.Length;
             for (int i = 0; i < data.Length; i++)
