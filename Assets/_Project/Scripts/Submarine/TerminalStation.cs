@@ -27,6 +27,8 @@ namespace TheDeep.Submarine
         bool transitioning;
 
         public string Prompt => "Use Terminal";
+        /// <summary>The (local) player sitting at this terminal, if any.</summary>
+        public PlayerInteractor User => user;
         public bool CanInteract(PlayerInteractor interactor) => user == null && !transitioning;
 
         void OnEnable() => os.LogOffRequested += Exit;

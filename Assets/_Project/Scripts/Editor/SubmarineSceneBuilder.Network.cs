@@ -44,17 +44,12 @@ namespace TheDeep.EditorTools
             cc.radius = 0.3f;
             cc.center = new Vector3(0, 0.9f, 0);
 
-            // Body visuals.
+            // Body visuals: a jointed diving suit, posed by DiverAnimator.
             var body = Group("Body", player.transform);
-            var torso = Primitive(PrimitiveType.Capsule, "Torso", body, new Vector3(0, 0.82f, 0), new Vector3(0.5f, 0.8f, 0.36f), suit, collider: false);
-            var armL = Primitive(PrimitiveType.Capsule, "ArmL", body, new Vector3(-0.32f, 1.05f, 0), new Vector3(0.15f, 0.36f, 0.15f), suit, collider: false);
-            var armR = Primitive(PrimitiveType.Capsule, "ArmR", body, new Vector3(0.32f, 1.05f, 0), new Vector3(0.15f, 0.36f, 0.15f), suit, collider: false);
-            var tank = Primitive(PrimitiveType.Capsule, "AirTank", body, new Vector3(0, 1.05f, -0.24f), new Vector3(0.22f, 0.32f, 0.22f), yellowTank, collider: false);
+            var rig = BuildDiverRig(body, suit);
 
             var head = Group("Head", player.transform);
             head.localPosition = new Vector3(0, 1.65f, 0);
-            var helmet = Sphere("Helmet", head, new Vector3(0, 0.02f, 0), 0.36f, brass);
-            var visor = Primitive(PrimitiveType.Sphere, "Visor", head, new Vector3(0, 0.02f, 0.1f), new Vector3(0.24f, 0.18f, 0.18f), glassDark, collider: false);
 
             // First-person camera (activated only for the owner).
             var camGo = new GameObject("Camera", typeof(Camera), typeof(AudioListener));
@@ -105,7 +100,6 @@ namespace TheDeep.EditorTools
             lamp.innerSpotAngle = 25f;
             lamp.shadows = LightShadows.None;
             lamp.enabled = false;
-            var lampHousing = Box("HeadlampHousing", head, new Vector3(0, 0.12f, 0.15f), new Vector3(0.08f, 0.06f, 0.06f), rubber, collider: false, worldUV: false);
 
             var diver = player.AddComponent<DiverController>();
             Assign(diver, "head", head);
@@ -139,18 +133,18 @@ namespace TheDeep.EditorTools
             var net = player.AddComponent<PlayerNetwork>();
             Assign(net, "head", head);
             Assign(net, "cameraRoot", camGo);
-            AssignArray(net, "suitRenderers", Renderers(torso, armL, armR));
-            AssignArray(net, "bodyRenderers", Renderers(torso, armL, armR, tank, helmet, visor, lampHousing));
+            AssignArray(net, "suitRenderers", rig.Suit.ToArray());
+            AssignArray(net, "bodyRenderers", rig.All.ToArray());
             AssignArray(net, "ownerOnly", new Object[] { fpc, interactor });
 
             var scanner = player.AddComponent<DiverScanner>();
             Assign(scanner, "head", head);
             Assign(scanner, "beamMaterial", Mat("Scanner_Beam", null, new Color(0.4f, 0.95f, 1f), emission: new Color(0.6f, 2f, 2.4f)));
 
-            // Voice: helmet radio light (red while transmitting) and bubbles when talking underwater.
-            var radioLed = Sphere("RadioLight", head, new Vector3(0.17f, 0.08f, 0.02f), 0.05f, lampRed);
+            // Voice: helmet radio light (red while transmitting) and bubbles when talking or breathing underwater.
+            var radioLed = rig.RadioLight;
             radioLed.GetComponent<Renderer>().enabled = false;
-            var bubbleSystem = Particles("TalkBubbles", head, new Vector3(0f, 0.05f, 0.2f), ParticleMat("P_Bubbles", false));
+            var bubbleSystem = Particles("TalkBubbles", rig.Neck, new Vector3(0f, 0.2f, 0.22f), ParticleMat("P_Bubbles", false));
             var bubbleMain = bubbleSystem.main;
             bubbleMain.prewarm = false;
             bubbleMain.startLifetime = 2.5f;
@@ -167,6 +161,11 @@ namespace TheDeep.EditorTools
             Assign(voice, "head", head);
             Assign(voice, "radioLight", radioLed.GetComponent<Renderer>());
             Assign(voice, "bubbles", bubbleSystem);
+
+            var animator = player.AddComponent<DiverAnimator>();
+            Assign(animator, "head", head);
+            Assign(animator, "bubbles", bubbleSystem);
+            AssignRig(animator, rig);
             // Own layer, so ropes (and later footage cameras) can ignore players.
             int playerLayer = LayerMask.NameToLayer("Player");
             foreach (var child in player.GetComponentsInChildren<Transform>(true)) child.gameObject.layer = playerLayer;

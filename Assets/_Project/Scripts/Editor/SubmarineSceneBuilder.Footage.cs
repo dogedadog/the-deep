@@ -23,31 +23,24 @@ namespace TheDeep.EditorTools
             var suit = Mat("Player_Suit", null, Color.white, smoothness: 0.35f);
             var root = new GameObject("DiverBody");
             var body = Group("Pose", root.transform);
-            body.localRotation = Quaternion.Euler(0f, 0f, 8f);
-            var torso = Primitive(PrimitiveType.Capsule, "Torso", body, new Vector3(0f, 0.25f, 0f), new Vector3(0.5f, 0.8f, 0.36f), suit, collider: false);
-            torso.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
-            var armL = Primitive(PrimitiveType.Capsule, "ArmL", body, new Vector3(-0.4f, 0.15f, 0.35f), new Vector3(0.15f, 0.36f, 0.15f), suit, collider: false);
-            armL.transform.localRotation = Quaternion.Euler(70f, 0f, 40f);
-            var armR = Primitive(PrimitiveType.Capsule, "ArmR", body, new Vector3(0.42f, 0.12f, -0.1f), new Vector3(0.15f, 0.36f, 0.15f), suit, collider: false);
-            armR.transform.localRotation = Quaternion.Euler(95f, 0f, -70f);
-            Primitive(PrimitiveType.Capsule, "AirTank", body, new Vector3(0f, 0.5f, -0.05f), new Vector3(0.22f, 0.32f, 0.22f), yellowTank, collider: false)
-                .transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
-            var helmet = Sphere("Helmet", body, new Vector3(0f, 0.28f, 0.95f), 0.36f, brass);
-            Primitive(PrimitiveType.Sphere, "Visor", body, new Vector3(0f, 0.2f, 1.08f), new Vector3(0.24f, 0.18f, 0.18f), glassDark, collider: false);
+            var rig = BuildDiverRig(body, suit);
+            PoseLimp(rig);
+            rig.FinR.SetActive(false); // one fin lost
+            // Cracked front port, and the helmet camera light still blinking while its chip is inside.
             var crack = Mat("Body_VisorCrack", null, new Color(0.8f, 0.85f, 0.85f), emission: new Color(0.05f, 0.05f, 0.05f));
             for (int i = 0; i < 3; i++)
-                Box("Crack", body, new Vector3(0.02f * i, 0.2f, 1.17f), new Vector3(0.008f, 0.12f, 0.004f), crack, collider: false, worldUV: false)
+                Box("Crack", rig.Neck, new Vector3(-0.03f + 0.03f * i, 0.2f, 0.2f), new Vector3(0.008f, 0.12f, 0.004f), crack, collider: false, worldUV: false)
                     .transform.localRotation = Quaternion.Euler(0f, 0f, -30f + i * 35f);
-            var chipLight = Sphere("CameraLight", body, new Vector3(0.14f, 0.38f, 0.98f), 0.04f, lampRed);
+            var chipLight = Sphere("CameraLight", rig.Neck, new Vector3(-0.14f, 0.36f, 0.12f), 0.04f, lampRed);
 
             var zone = root.AddComponent<SphereCollider>();
             zone.isTrigger = true;
-            zone.center = new Vector3(0f, 0.4f, 0.4f);
-            zone.radius = 1.4f;
+            zone.center = new Vector3(0f, 0.3f, -0.5f);
+            zone.radius = 1.5f;
 
             root.AddComponent<NetworkObject>();
             var diverBody = root.AddComponent<DiverBody>();
-            AssignArray(diverBody, "suitRenderers", Renderers(torso, armL, armR));
+            AssignArray(diverBody, "suitRenderers", rig.Suit.ToArray());
             Assign(diverBody, "chipLight", chipLight.GetComponent<Renderer>());
 
             var prefab = PrefabUtility.SaveAsPrefabAsset(root, BodyPrefabPath);
