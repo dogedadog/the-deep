@@ -1,3 +1,4 @@
+using TheDeep.Audio;
 using TheDeep.Core;
 using TheDeep.Footage;
 using TheDeep.Submarine;
@@ -14,6 +15,8 @@ namespace TheDeep.Player
     ///   In the sub: idle breathing, walking, typing at the terminal.
     ///   In the water: treading water, flutter kicking, body turning into the swim direction
     ///   (head-first when diving down), plus scanning, radio and reeling-in poses on top.
+    /// It also makes the body's sounds, in step with the motion: footsteps aboard and breathing
+    /// underwater (2D for the owner, 3D for everyone else).
     /// </summary>
     public class DiverAnimator : NetworkBehaviour
     {
@@ -30,6 +33,7 @@ namespace TheDeep.Player
         readonly NetworkVariable<byte> flags = new(0, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Owner);
 
         DiverController diver;
+        DiverHealth health;
         DiverTether tether;
         PlayerVoice voice;
         HelmetCamera helmetCam;
@@ -39,12 +43,14 @@ namespace TheDeep.Player
         MaterialPropertyBlock lensBlock;
 
         Vector3 bodyRest, lastPosition, velocity;
-        float walkPhase, kickPhase, bodyPitch, bodyRoll, nextBreath;
+        float walkPhase, walkK, kickPhase, bodyPitch, bodyRoll, nextBreath;
         float swimW, scanW, radioW, reelW, terminalW;
+        int lastStep, stepVariant;
 
         void Awake()
         {
             diver = GetComponent<DiverController>();
+            health = GetComponent<DiverHealth>();
             tether = GetComponent<DiverTether>();
             voice = GetComponent<PlayerVoice>();
             helmetCam = GetComponent<HelmetCamera>();
@@ -141,11 +147,35 @@ namespace TheDeep.Player
             ankleL.localRotation = Quaternion.Euler(pose.LegL.Ankle, 0f, 0f);
             ankleR.localRotation = Quaternion.Euler(pose.LegR.Ankle, 0f, 0f);
 
-            // Breathing out underwater: a puff of bubbles every few seconds.
-            if (diving && bubbles != null && t > nextBreath)
+            // Breathing out underwater: a puff of bubbles every few seconds, faster when air runs low.
+            // Never from a corpse (its particles stay visible).
+            bool alive = health == null || !health.IsDead;
+            if (diving && alive && t > nextBreath)
             {
-                nextBreath = t + Random.Range(3.5f, 5f);
-                if (voice == null || !voice.Talking) bubbles.Emit(Random.Range(6, 11));
+                float air = health != null ? health.Air01 : 1f;
+                float k = air < 0.25f ? Mathf.Lerp(0.35f, 1f, air / 0.25f) : 1f;
+                nextBreath = t + Random.Range(3.5f, 5f) * k;
+                if (voice == null || !voice.Talking)
+                {
+                    if (bubbles != null) bubbles.Emit(Random.Range(6, 11));
+                    if (IsOwner) SfxPlayer.Play(Sfx.Breath, 0.12f);
+                    else if (IsSpawned) SfxPlayer.PlayAt(Sfx.Exhale, head.position, 0.25f, 10f);
+                }
+            }
+            else if (!diving) nextBreath = t + 2f; // first breath a moment after the splash, not on top of it
+
+            // Footsteps aboard, one per half walk cycle. WalkPose runs in the water too, hence !diving.
+            int step = Mathf.FloorToInt(walkPhase / Mathf.PI);
+            if (step != lastStep)
+            {
+                lastStep = step;
+                if (!diving && walkK > 0.2f && alive && IsSpawned)
+                {
+                    stepVariant = 1 - stepVariant;
+                    float pitch = Random.Range(0.94f, 1.06f);
+                    if (IsOwner) SfxPlayer.Play(Sfx.Step, 0.12f, pitch, stepVariant);
+                    else SfxPlayer.PlayAt(Sfx.Step, transform.position, 0.35f, 12f, pitch, stepVariant);
+                }
             }
         }
 
@@ -156,6 +186,7 @@ namespace TheDeep.Player
             var local = transform.InverseTransformDirection(velocity);
             float speed = new Vector2(local.x, local.z).magnitude;
             float k = Mathf.Clamp01(speed / 2.5f);
+            walkK = k;
             walkPhase += speed * 4.2f * dt * (local.z < -0.1f ? -1f : 1f);
             float s = Mathf.Sin(walkPhase);
             float breath = Mathf.Sin(t * 1.6f);

@@ -1,6 +1,7 @@
 using System;
 using UnityEngine;
 using UnityEngine.Events;
+using UnityEngine.EventSystems;
 using UnityEngine.UI;
 
 namespace TheDeep.UI.Terminal
@@ -22,6 +23,13 @@ namespace TheDeep.UI.Terminal
 
         static Font font;
         public static Font Font => font != null ? font : font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+
+        /// <summary>Any RetroUI button was clicked (raised before the button's own action), e.g. for click sounds.</summary>
+        public static event Action<Button> ButtonClicked;
+        /// <summary>A greyed-out RetroUI button was clicked.</summary>
+        public static event Action DisabledClicked;
+
+        internal static void RaiseDisabledClicked() => DisabledClicked?.Invoke();
 
         public static RectTransform Rect(string name, Transform parent)
         {
@@ -109,16 +117,17 @@ namespace TheDeep.UI.Terminal
             colors.pressedColor = new Color(0.7f, 0.7f, 0.7f);
             colors.disabledColor = new Color(0.8f, 0.8f, 0.8f, 1f);
             button.colors = colors;
+            button.onClick.AddListener(() => ButtonClicked?.Invoke(button));
             if (onClick != null) button.onClick.AddListener(onClick);
+            img.gameObject.AddComponent<RetroButtonState>().Init(button, label);
             return button;
         }
 
-        /// <summary>A disabled button with greyed text, used for features that aren't built yet.</summary>
+        /// <summary>A disabled button (its label greys out), used for features that aren't built yet.</summary>
         public static Button DisabledButton(string name, Transform parent, string text, int fontSize = 16)
         {
             var b = Button(name, parent, text, null, fontSize);
             b.interactable = false;
-            b.GetComponentInChildren<Text>().color = Shadow;
             return b;
         }
 
@@ -133,5 +142,53 @@ namespace TheDeep.UI.Terminal
         }
 
         public static string Timestamp() => DateTime.Now.ToString("HH:mm:ss");
+    }
+
+    /// <summary>
+    /// Added to every <see cref="RetroUI.Button"/> (runtime only, like TerminalOS's desktop helpers).
+    /// Greys the label while the button can't be clicked and restores its colour afterwards, so
+    /// custom label colours (the red keybind clashes) are left alone while it's clickable. Clicks on
+    /// a greyed button don't reach Button.onClick, so they are reported here.
+    /// </summary>
+    public class RetroButtonState : MonoBehaviour, IPointerDownHandler, IPointerClickHandler
+    {
+        Button button;
+        Text label;
+        Color enabledColor;
+        bool wasInteractable = true;
+        bool pressedDisabled;
+
+        public void Init(Button target, Text text)
+        {
+            button = target;
+            label = text;
+        }
+
+        void LateUpdate()
+        {
+            if (button == null || label == null) return;
+            bool interactable = button.IsInteractable();
+            if (interactable == wasInteractable) return;
+            wasInteractable = interactable;
+            if (!interactable)
+            {
+                enabledColor = label.color;
+                label.color = RetroUI.Shadow;
+            }
+            else
+            {
+                label.color = enabledColor;
+            }
+        }
+
+        // Judged by the state at the press: Button.onClick runs before this handler, and an action
+        // that greys its own button (BUY's double-buy lock) isn't a click on a disabled button.
+        public void OnPointerDown(PointerEventData e) => pressedDisabled = button != null && !button.IsInteractable();
+
+        public void OnPointerClick(PointerEventData e)
+        {
+            if (button != null && e.button == PointerEventData.InputButton.Left && pressedDisabled && !button.IsInteractable())
+                RetroUI.RaiseDisabledClicked();
+        }
     }
 }
