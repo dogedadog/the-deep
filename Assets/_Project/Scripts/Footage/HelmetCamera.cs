@@ -26,7 +26,7 @@ namespace TheDeep.Footage
         DiverHealth health;
         FootageClip clip;
         float recorded, sampleTimer;
-        bool recording;
+        bool recording, newTake;
         Text recText;
 
         public float FilmLeft => FilmSeconds - recorded;
@@ -94,16 +94,24 @@ namespace TheDeep.Footage
                 ExpeditionAnnounceLocal("TEST: YOUR FOOTAGE IS IN THE CHIP READER - open the Footage app");
             }
             bool canFilm = diver.IsDiving && (health == null || !health.IsDead) && !GetComponent<FirstPersonController>().InputLocked;
+            bool wasRecording = recording;
             recording = canFilm && Controls.Held(GameAction.Record) && FilmLeft > 0f;
             if (recording)
             {
                 if (clip == null) NewChip();
+                if (!wasRecording)
+                {
+                    // Starting again after a pause: the next frame begins a new take.
+                    newTake = clip.Frames.Count > 0;
+                    sampleTimer = 0f;
+                }
                 recorded += Time.deltaTime;
                 sampleTimer -= Time.deltaTime;
                 if (sampleTimer <= 0f)
                 {
                     sampleTimer = SampleInterval;
-                    clip.Frames.Add(new FootageFrame { Time = recorded, Position = head.position, Rotation = head.rotation, Lamp = headlamp.enabled });
+                    clip.Frames.Add(new FootageFrame { Time = recorded, Position = head.position, Rotation = head.rotation, Lamp = headlamp.enabled, Cut = newTake });
+                    newTake = false;
                 }
             }
             bool flashing = Time.time < flashUntil;

@@ -159,6 +159,10 @@ namespace TheDeep.UI.Terminal.Apps
             float noise = c.Corrupted && UnityEngine.Random.value < 0.04f ? UnityEngine.Random.Range(0.3f, 0.8f) : 0f;
             bool ending = c.EndsInDeath && t > d - 1.5f;
             if (ending) noise = Mathf.Max(noise, Mathf.InverseLerp(d - 1.5f, d, t));
+            // A burst of static where the diver stopped and started recording again.
+            const float CutStaticSeconds = 0.4f;
+            float sinceCut = c.SinceCut(t);
+            if (sinceCut < CutStaticSeconds) noise = Mathf.Max(noise, 1f - sinceCut / CutStaticSeconds * 0.7f);
             if (material != null) material.SetFloat("_Static", noise);
             lost.gameObject.SetActive(c.EndsInDeath && t >= d - 0.05f);
             status.text = c.EndsInDeath ? "This camera stopped recording when its diver died." : "Recorded by a living diver.";

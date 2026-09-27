@@ -15,6 +15,8 @@ namespace TheDeep.Footage
         public bool Proxy;
         public Vector3 ProxyPosition;
         public Quaternion ProxyRotation;
+        /// <summary>First frame of a new take (recording was stopped and started again): playback jumps here with static.</summary>
+        public bool Cut;
     }
 
     /// <summary>A piece of sound picked up while filming (8 kHz mu-law, like the radio).</summary>
@@ -54,6 +56,7 @@ namespace TheDeep.Footage
                 if (Frames[i].Time < t) continue;
                 var a = Frames[i - 1];
                 var b = Frames[i];
+                if (b.Cut) return a; // no sliding between takes: hold the last shot until the cut
                 float k = Mathf.InverseLerp(a.Time, b.Time, t);
                 return new FootageFrame
                 {
@@ -67,6 +70,22 @@ namespace TheDeep.Footage
                 };
             }
             return Frames[^1];
+        }
+
+        /// <summary>Seconds since the most recent cut at or before <paramref name="t"/> (infinity if none).</summary>
+        public float SinceCut(float t)
+        {
+            for (int i = Frames.Count - 1; i >= 0; i--)
+                if (Frames[i].Cut && Frames[i].Time <= t) return t - Frames[i].Time;
+            return float.PositiveInfinity;
+        }
+
+        /// <summary>True if a cut happens after <paramref name="from"/> and at or before <paramref name="to"/>.</summary>
+        public bool CutBetween(float from, float to)
+        {
+            foreach (var f in Frames)
+                if (f.Cut && f.Time > from && f.Time <= to) return true;
+            return false;
         }
 
         public byte[] ToBytes()
@@ -85,6 +104,7 @@ namespace TheDeep.Footage
                 Write(w, f.Position);
                 Write(w, f.Rotation.eulerAngles);
                 w.Write(f.Lamp);
+                w.Write(f.Cut);
                 w.Write(f.Proxy);
                 if (!f.Proxy) continue;
                 Write(w, f.ProxyPosition);
@@ -122,6 +142,7 @@ namespace TheDeep.Footage
                     Position = Read(r),
                     Rotation = Quaternion.Euler(Read(r)),
                     Lamp = r.ReadBoolean(),
+                    Cut = r.ReadBoolean(),
                     Proxy = r.ReadBoolean(),
                 };
                 if (f.Proxy)

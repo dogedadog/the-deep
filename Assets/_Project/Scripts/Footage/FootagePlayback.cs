@@ -66,6 +66,15 @@ namespace TheDeep.Footage
             }
         }
 
+        /// <summary>A short "kssht" of static on the speaker where one take cuts to the next.</summary>
+        void CutStatic()
+        {
+            var noise = new float[TheDeep.Voice.VoiceCodec.SampleRate * 3 / 10];
+            for (int i = 0; i < noise.Length; i++) noise[i] = (UnityEngine.Random.value * 2f - 1f) * 0.5f;
+            radioOut.Configure(TheDeep.Core.GameSettings.VoiceVolume, 1f, false);
+            radioOut.Push(noise);
+        }
+
         void ResetAudio()
         {
             voiceOut.Clear();
@@ -120,7 +129,9 @@ namespace TheDeep.Footage
             cam.enabled = true;
             if (Playing)
             {
+                float before = Time;
                 Time += UnityEngine.Time.deltaTime;
+                if (clip.CutBetween(before, Time)) CutStatic();
                 PlayAudioUpTo(Time);
                 if (Time >= clip.Duration)
                 {
