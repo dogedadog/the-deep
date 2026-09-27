@@ -25,10 +25,15 @@ namespace TheDeep.Footage
 
         public override void OnNetworkSpawn()
         {
-            if (IsServer && lostDiverIndex >= 0 && chips.Count == 0) chips.Add(LostDiverFootage.ChipId(lostDiverIndex));
-            crew.OnValueChanged += (_, _) => ApplyColor();
+            // Team 7 lie in the scene and survive LEAVE: a chip taken last session comes back.
+            if (IsServer && lostDiverIndex >= 0) ServerResetLostDiver();
+            crew.OnValueChanged += OnCrewChanged;
             ApplyColor();
         }
+
+        public override void OnNetworkDespawn() => crew.OnValueChanged -= OnCrewChanged;
+
+        void OnCrewChanged(int previous, int current) => ApplyColor();
 
         /// <summary>Server, right after spawning a crewmate's body.</summary>
         public void ServerInit(int crewNumber, System.Collections.Generic.IEnumerable<int> chipIds)
@@ -68,7 +73,8 @@ namespace TheDeep.Footage
         public bool CanInteract(PlayerInteractor interactor)
         {
             var diver = interactor.GetComponent<DiverController>();
-            return ChipCount > 0 && diver != null && diver.IsDiving;
+            var health = interactor.GetComponent<DiverHealth>();
+            return ChipCount > 0 && diver != null && diver.IsDiving && (health == null || !health.IsDead);
         }
 
         public void Interact(PlayerInteractor interactor) => TakeChipRpc();
