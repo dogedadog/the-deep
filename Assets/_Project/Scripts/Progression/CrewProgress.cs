@@ -68,17 +68,21 @@ namespace TheDeep.Progression
                     caseFiles.Add(new CaseFileEntry { TargetId = file.targetId, Expedition = file.expedition, Title = file.title });
                 expedition.Value = save.expeditionsCompleted + 1;
             }
-            levels.OnListChanged += _ => ApplyEffects();
+            // Named handler, removed on despawn: the in-scene object is spawned again on every rehost.
+            levels.OnListChanged += OnLevelsChanged;
             ApplyEffects();
         }
 
         public override void OnNetworkDespawn()
         {
+            levels.OnListChanged -= OnLevelsChanged;
             if (IsServer) SaveSystem.Save();
             SignalModel.RangeMultiplier = 1f;
         }
 
         public int Level(UpgradeType type) => IsSpawned && levels.Count > (int)type ? levels[(int)type] : 0;
+
+        void OnLevelsChanged(NetworkListEvent<int> change) => ApplyEffects();
 
         void ApplyEffects()
         {
@@ -86,11 +90,16 @@ namespace TheDeep.Progression
             Changed?.Invoke();
         }
 
-        /// <summary>Crew clicked BUY on the Balance app.</summary>
+        /// <summary>
+        /// Crew clicked BUY on the Balance app. <paramref name="fromLevel"/> is the level the buyer saw,
+        /// so a double-click (or two crew clicking at once) installs one level, not two.
+        /// </summary>
         [Rpc(SendTo.Server)]
-        public void BuyUpgradeRpc(UpgradeType type)
+        public void BuyUpgradeRpc(UpgradeType type, int fromLevel)
         {
+            if ((int)type < 0 || (int)type >= UpgradeCatalog.Count || !UpgradeCatalog.IsAvailable(type)) return;
             int level = Level(type);
+            if (level != fromLevel) return;
             int cost = UpgradeCatalog.Cost(type, level);
             var expeditionState = ExpeditionState.Instance;
             if (cost < 0 || expeditionState == null) return;
@@ -98,6 +107,7 @@ namespace TheDeep.Progression
 
             levels[(int)type] = level + 1;
             SaveSystem.Active.upgrades[(int)type] = level + 1;
+            // If the write fails the purchase stands: it's in memory and the next autosave retries.
             SaveSystem.Save();
             expeditionState.AnnounceRpc($"UPGRADE INSTALLED: {UpgradeCatalog.Name(type).ToUpperInvariant()} (LEVEL {level + 1})");
         }
@@ -133,7 +143,9 @@ namespace TheDeep.Progression
 
         void Update()
         {
-            if (!IsServer || SaveSystem.Active == null) return;
+            // IsServer stays set after LEAVE (the in-scene object is despawned, not destroyed), so
+            // without IsSpawned menu time would be counted and autosaved into the last slot.
+            if (!IsServer || !IsSpawned || SaveSystem.Active == null) return;
             SaveSystem.Active.playSeconds += Time.unscaledDeltaTime;
             autosaveTimer += Time.unscaledDeltaTime;
             if (autosaveTimer >= AutosaveSeconds)
@@ -145,7 +157,7 @@ namespace TheDeep.Progression
 
         void OnApplicationQuit()
         {
-            if (IsServer) SaveSystem.Save();
+            if (IsServer && IsSpawned) SaveSystem.Save();
         }
 
         public override void OnDestroy()

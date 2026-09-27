@@ -1,6 +1,10 @@
+using System.Collections.Generic;
 using System.Text;
 using TheDeep.Data;
+using TheDeep.Footage;
+using TheDeep.Player;
 using TheDeep.Progression;
+using TheDeep.Submarine;
 using Unity.Netcode;
 using UnityEngine;
 using UnityEngine.UI;
@@ -9,26 +13,32 @@ namespace TheDeep.UI.Terminal.Apps
 {
     /// <summary>
     /// Expedition account and upgrade shop. Credits reset when the crew surfaces, upgrades are
-    /// permanent (saved in the host's slot). The host ends the expedition from here.
+    /// permanent (saved in the host's slot). The host ends the expedition from here (anyone may
+    /// while the host is dead), after a second click that lists everything surfacing will lose.
     /// </summary>
     public class BalanceApp : TerminalApp
     {
         const float RowY = 196f;
         const float RowHeight = 36f;
+        const float ConfirmSeconds = 6f;
+        const float BuyLockSeconds = 0.5f;
 
         readonly Button[] buyButtons = new Button[UpgradeCatalog.Count];
         readonly Text[] levelTexts = new Text[UpgradeCatalog.Count];
         readonly Text[] effectTexts = new Text[UpgradeCatalog.Count];
+        // Level each row showed at the last refresh, and when its BUY button unlocks after a click.
+        readonly int[] shownLevels = new int[UpgradeCatalog.Count];
+        readonly float[] buyLockUntil = new float[UpgradeCatalog.Count];
         Text balance, ledger, heading;
         Button endButton;
-        Text endText;
+        Text endText, endWarning;
         float confirmUntil;
         bool open;
 
         public override string Title => "Balance";
         public override string IconGlyph => "$CR";
         public override Color IconColor => new(0.45f, 0.4f, 0.1f);
-        public override Vector2 WindowSize => new(600, 500);
+        public override Vector2 WindowSize => new(600, 520);
 
         public override void BuildContent(RectTransform content)
         {
@@ -57,20 +67,24 @@ namespace TheDeep.UI.Terminal.Apps
                 RetroUI.Place(levelTexts[i].rectTransform, 176, y, 56, RowHeight - 4);
                 effectTexts[i] = RetroUI.Label("Effect", content, "", 13);
                 RetroUI.Place(effectTexts[i].rectTransform, 232, y, 200, RowHeight - 4);
-                buyButtons[i] = RetroUI.Button("Buy", content, "", () =>
-                {
-                    if (CrewProgress.Instance != null) CrewProgress.Instance.BuyUpgradeRpc(type);
-                }, 14);
+                buyButtons[i] = RetroUI.Button("Buy", content, "", () => Buy(type), 14);
                 RetroUI.Place(buyButtons[i].GetComponent<RectTransform>(), width - 144, y, 144, RowHeight - 4);
             }
 
             endButton = RetroUI.Button("End", content, "", EndExpedition, 15);
             RetroUI.Place(endButton.GetComponent<RectTransform>(), 0, RowY + UpgradeCatalog.Count * RowHeight + 8, width, 40);
             endText = endButton.GetComponentInChildren<Text>();
+            endWarning = RetroUI.Label("EndWarning", content, "", 13, new Color(0.62f, 0.06f, 0.03f), TextAnchor.UpperLeft);
+            RetroUI.Place(endWarning.rectTransform, 0, RowY + UpgradeCatalog.Count * RowHeight + 52, width, 36);
             Refresh();
         }
 
-        public override void OnOpened() => open = true;
+        public override void OnOpened()
+        {
+            open = true;
+            Refresh();
+        }
+
         public override void OnClosed() => open = false;
 
         void Update()
@@ -78,12 +92,25 @@ namespace TheDeep.UI.Terminal.Apps
             if (open && Time.frameCount % 10 == 0) Refresh();
         }
 
+        void Buy(UpgradeType type)
+        {
+            var progress = CrewProgress.Instance;
+            int row = (int)type;
+            if (progress == null || !progress.IsSpawned || Time.unscaledTime < buyLockUntil[row]) return;
+            // Lock the row briefly and send the level the player saw, not the live one: on the host the
+            // RPC runs at once, so a double-click's second click would otherwise buy the next level too.
+            // The server's level check still covers two crew members clicking together.
+            buyLockUntil[row] = Time.unscaledTime + BuyLockSeconds;
+            buyButtons[row].interactable = false;
+            progress.BuyUpgradeRpc(type, shownLevels[row]);
+        }
+
         void EndExpedition()
         {
-            // Two clicks, since it throws away unspent credits.
+            // Two clicks, since it throws away unspent credits (and whatever else the warning lists).
             if (Time.time > confirmUntil)
             {
-                confirmUntil = Time.time + 4f;
+                confirmUntil = Time.time + ConfirmSeconds;
                 Refresh();
                 return;
             }
@@ -103,6 +130,7 @@ namespace TheDeep.UI.Terminal.Apps
                 ledger.text = "ACCOUNT OFFLINE";
                 foreach (var b in buyButtons) b.interactable = false;
                 endButton.gameObject.SetActive(false);
+                endWarning.text = "";
                 return;
             }
 
@@ -121,24 +149,91 @@ namespace TheDeep.UI.Terminal.Apps
             for (int i = 0; i < UpgradeCatalog.Count; i++)
             {
                 var type = (UpgradeType)i;
+                var label = buyButtons[i].GetComponentInChildren<Text>();
+                if (!UpgradeCatalog.IsAvailable(type))
+                {
+                    levelTexts[i].text = "--";
+                    effectTexts[i].text = "NOT FITTED YET";
+                    label.text = "OFFLINE";
+                    buyButtons[i].interactable = false;
+                    continue;
+                }
                 int level = progress.Level(type);
                 int cost = UpgradeCatalog.Cost(type, level);
+                shownLevels[i] = level;
                 levelTexts[i].text = $"L{level}/{UpgradeCatalog.MaxLevel}";
-                effectTexts[i].text = cost < 0
+                string effect = cost < 0
                     ? UpgradeCatalog.Describe(type, level)
                     : $"{UpgradeCatalog.Describe(type, level)} > {UpgradeCatalog.Describe(type, level + 1)}";
-                var label = buyButtons[i].GetComponentInChildren<Text>();
-                label.text = cost < 0 ? "MAXED" : $"BUY  {cost} CR";
-                buyButtons[i].interactable = cost >= 0 && state.Credits >= cost;
+                if (type == UpgradeType.DepthRating && cost >= 0 && StationNeeding(level + 1) is string station)
+                    effect += $" ({station})";
+                effectTexts[i].text = effect;
+                label.text = cost < 0 ? "MAXED"
+                    : cost > state.Credits ? $"NEED {cost - state.Credits} CR"
+                    : $"BUY  {cost} CR";
+                buyButtons[i].interactable = cost >= 0 && state.Credits >= cost && Time.unscaledTime >= buyLockUntil[i];
             }
 
             bool isHost = NetworkManager.Singleton != null && NetworkManager.Singleton.IsHost;
+            bool hostDead = !isHost && HostIsDead();
+            bool canEnd = isHost || hostDead;
+            bool confirming = canEnd && Time.time < confirmUntil;
             endButton.gameObject.SetActive(true);
-            endButton.interactable = isHost;
-            endText.text = !isHost ? "ONLY THE HOST CAN END THE EXPEDITION"
-                : Time.time < confirmUntil ? $"CLICK AGAIN TO SURFACE  ({state.Credits} UNSPENT CR WILL BE LOST)"
+            endButton.interactable = canEnd;
+            endText.text = !canEnd ? "ONLY THE HOST CAN END THE EXPEDITION"
+                : confirming ? "CLICK AGAIN TO SURFACE"
+                : hostDead ? "HOST HAS NO VITALS - ANY CREW MAY SURFACE"
                 : "END EXPEDITION  -  SURFACE AND SAVE";
-            endButton.targetGraphic.color = Time.time < confirmUntil ? new Color(1f, 0.7f, 0.5f) : RetroUI.Face;
+            endButton.targetGraphic.color = confirming ? new Color(1f, 0.7f, 0.5f) : RetroUI.Face;
+            endWarning.text = confirming ? SurfaceLosses(state) : "";
         }
+
+        /// <summary>Name of the dive station that needs exactly this depth-rating level, or null.</summary>
+        static string StationNeeding(int depthLevel)
+        {
+            var nav = SubNavigation.Instance;
+            if (nav == null || nav.Stations == null) return null;
+            foreach (var s in nav.Stations)
+                if (s.requiredDepthLevel == depthLevel) return s.name;
+            return null;
+        }
+
+        /// <summary>The host's diver has no vitals, so it can't reach a terminal to end the expedition.</summary>
+        static bool HostIsDead()
+        {
+            foreach (var health in FindObjectsByType<DiverHealth>(FindObjectsSortMode.None))
+                if (health.IsSpawned && health.OwnerClientId == NetworkManager.ServerClientId) return health.IsDead;
+            return false;
+        }
+
+        /// <summary>Everything ending the expedition now throws away (only the non-zero lines).</summary>
+        static string SurfaceLosses(ExpeditionState state)
+        {
+            var lines = new List<string>();
+            if (state.Credits > 0) lines.Add($"{state.Credits} CR UNSPENT WILL BE LOST");
+
+            // LOGGED packets are submitted automatically when the crew surfaces; these aren't.
+            int unlogged = 0;
+            foreach (var p in state.Packets)
+                if (p.Status == PacketStatus.Pending || p.Status == PacketStatus.Corrupted ||
+                    p.Status == PacketStatus.Logging || p.Status == PacketStatus.Repairing) unlogged++;
+            if (unlogged > 0) lines.Add($"{unlogged} UNLOGGED {Plural(unlogged, "PACKET")} WILL BE LOST");
+
+            int chips = 0;
+            var archive = FootageArchive.Instance;
+            if (archive != null && archive.IsSpawned)
+                foreach (var chip in archive.Chips)
+                    if (chip.Status != ChipStatus.Inserted && !LostDiverFootage.IsLostDiverChip(chip.Id)) chips++;
+            if (chips > 0) lines.Add($"{chips} CAMERA {Plural(chips, "CHIP")} NOT IN THE READER WILL BE LOST");
+
+            int outside = 0;
+            foreach (var diver in FindObjectsByType<DiverController>(FindObjectsSortMode.None))
+                if (diver.IsSpawned && diver.IsDiving) outside++;
+            if (outside > 0) lines.Add($"{outside} {Plural(outside, "DIVER")} STILL OUTSIDE");
+
+            return string.Join("   /   ", lines);
+        }
+
+        static string Plural(int n, string word) => n == 1 ? word : word + "S";
     }
 }

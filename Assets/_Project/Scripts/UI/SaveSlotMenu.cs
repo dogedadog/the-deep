@@ -133,18 +133,24 @@ namespace TheDeep.UI
             {
                 var data = SaveSystem.Peek(i);
                 var slot = slots[i];
-                bool used = data != null;
-                slot.Info.text = used ? SaveSystem.Describe(data) : "EMPTY\nStart a new expedition log here.";
+                bool used = data != null;               // something readable (maybe from the backup)
+                bool exists = SaveSystem.Exists(i);     // anything on disk, readable or not
+                bool damaged = SaveSystem.IsDamaged(i); // the main file can't be read
+                slot.Info.text = used && damaged ? "RESTORED FROM BACKUP\n" + SaveSystem.Describe(data)
+                    : used ? SaveSystem.Describe(data)
+                    : exists ? "SAVE UNREADABLE - NEW WILL OVERWRITE" + (damaged ? "\n(a copy is kept)" : "")
+                    : "EMPTY\nStart a new expedition log here.";
                 slot.Continue.gameObject.SetActive(used);
-                slot.Delete.gameObject.SetActive(used);
+                slot.Delete.gameObject.SetActive(exists);
                 bool confirming = confirmSlot == i;
-                slot.New.GetComponentInChildren<Text>().text = !used ? "NEW GAME"
+                // Overwriting anything on disk takes a second click; the label shows it's armed.
+                slot.New.GetComponentInChildren<Text>().text = !exists ? "NEW GAME"
                     : confirming && confirmAction == "new" ? "OVERWRITE?" : "NEW";
                 slot.Delete.GetComponentInChildren<Text>().text = confirming && confirmAction == "delete" ? "SURE?" : "DELETE";
                 // An empty slot's NEW button takes the full width.
                 var newRt = slot.New.GetComponent<RectTransform>();
-                newRt.sizeDelta = new Vector2(used ? 106 : 218, used ? 40 : 88);
-                newRt.anchoredPosition = new Vector2(462, -(50 + i * SlotHeight + (used ? 48 : 0)));
+                newRt.sizeDelta = new Vector2(exists ? 106 : 218, exists ? 40 : 88);
+                newRt.anchoredPosition = new Vector2(462, -(50 + i * SlotHeight + (exists ? 48 : 0)));
             }
         }
     }

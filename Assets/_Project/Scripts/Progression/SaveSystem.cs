@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using UnityEngine;
 
@@ -6,11 +7,15 @@ namespace TheDeep.Progression
 {
     /// <summary>
     /// Four save slots as JSON files in the player's data folder. The host picks one before
-    /// hosting; it's then the <see cref="Active"/> save for that session.
+    /// hosting; it's then the <see cref="Active"/> save for that session. Each slot keeps the last
+    /// save as a .bak, and reading falls back to it (or to a half-finished .tmp) if the main file
+    /// is missing or damaged.
     /// </summary>
     public static class SaveSystem
     {
         public const int SlotCount = 4;
+        const string TempSuffix = ".tmp";
+        const string BackupSuffix = ".bak";
 
         public static int ActiveSlot { get; private set; } = -1;
         public static SaveData Active { get; private set; }
@@ -18,18 +23,45 @@ namespace TheDeep.Progression
         static string Folder => Path.Combine(Application.persistentDataPath, "saves");
         static string PathFor(int slot) => Path.Combine(Folder, $"slot{slot + 1}.json");
 
-        public static bool Exists(int slot) => File.Exists(PathFor(slot));
+        /// <summary>True if the slot has anything on disk: the save, its backup or an unfinished write.</summary>
+        public static bool Exists(int slot)
+        {
+            string path = PathFor(slot);
+            return File.Exists(path) || File.Exists(path + TempSuffix) || File.Exists(path + BackupSuffix);
+        }
 
-        /// <summary>Reads a slot without making it active (for the slot list). Null if empty or unreadable.</summary>
+        /// <summary>
+        /// Reads a slot without making it active (for the slot list): the save, else the unfinished
+        /// write, else the backup. Null if empty or nothing is readable.
+        /// </summary>
         public static SaveData Peek(int slot)
+        {
+            string path = PathFor(slot);
+            return TryRead(path) ?? TryRead(path + TempSuffix) ?? TryRead(path + BackupSuffix);
+        }
+
+        /// <summary>The main save file is there but can't be read (<see cref="Peek"/> may still recover a backup).</summary>
+        public static bool IsDamaged(int slot)
+        {
+            string path = PathFor(slot);
+            return File.Exists(path) && TryRead(path) == null;
+        }
+
+        static SaveData TryRead(string file)
         {
             try
             {
-                return Exists(slot) ? JsonUtility.FromJson<SaveData>(File.ReadAllText(PathFor(slot))) : null;
+                if (!File.Exists(file)) return null;
+                string json = File.ReadAllText(file);
+                if (string.IsNullOrWhiteSpace(json)) return null;
+                var data = JsonUtility.FromJson<SaveData>(json);
+                if (data == null || data.upgrades == null) return null;
+                data.caseFiles ??= new List<CaseFile>();
+                return data;
             }
             catch (Exception e)
             {
-                Debug.LogWarning($"[Save] Slot {slot + 1} unreadable: {e.Message}");
+                Debug.LogWarning($"[Save] {Path.GetFileName(file)} unreadable: {e.Message}");
                 return null;
             }
         }
@@ -38,32 +70,70 @@ namespace TheDeep.Progression
         public static void Use(int slot, bool startNew)
         {
             ActiveSlot = slot;
-            Active = (!startNew ? Peek(slot) : null) ?? SaveData.CreateNew();
-            if (Active.upgrades == null || Active.upgrades.Length != UpgradeCatalog.Count)
-            {
-                var levels = new int[UpgradeCatalog.Count];
-                if (Active.upgrades != null) Array.Copy(Active.upgrades, levels, Math.Min(levels.Length, Active.upgrades.Length));
-                Active.upgrades = levels;
-            }
+            var loaded = Peek(slot);
+            // About to overwrite a save nothing can be recovered from: keep a copy of it first.
+            if (loaded == null && IsDamaged(slot)) KeepDamagedCopy(PathFor(slot));
+            Active = (!startNew ? loaded : null) ?? SaveData.CreateNew();
+
+            var levels = new int[UpgradeCatalog.Count];
+            if (Active.upgrades != null) Array.Copy(Active.upgrades, levels, Math.Min(levels.Length, Active.upgrades.Length));
+            // Hand-edited or buggy saves: keep every level in range.
+            for (int i = 0; i < levels.Length; i++) levels[i] = Math.Clamp(levels[i], 0, UpgradeCatalog.MaxLevel);
+            Active.upgrades = levels;
+            // Also turns a recovered .tmp/.bak back into the main file.
             Save();
         }
 
-        public static void Save()
+        static void KeepDamagedCopy(string path)
         {
-            if (ActiveSlot < 0 || Active == null) return;
-            Directory.CreateDirectory(Folder);
-            Active.lastPlayedUtc = DateTime.UtcNow.ToString("o");
-            // Write to a temp file first so a crash mid-save can't corrupt the slot.
-            string path = PathFor(ActiveSlot);
-            string temp = path + ".tmp";
-            File.WriteAllText(temp, JsonUtility.ToJson(Active, true));
-            if (File.Exists(path)) File.Delete(path);
-            File.Move(temp, path);
+            try
+            {
+                string copy = $"{path}.damaged-{DateTime.Now:yyyyMMdd-HHmmss}";
+                File.Copy(path, copy, true);
+                Debug.LogWarning($"[Save] {Path.GetFileName(path)} is unreadable; kept a copy as {Path.GetFileName(copy)}");
+            }
+            catch (Exception e)
+            {
+                Debug.LogError($"[Save] Couldn't copy damaged {Path.GetFileName(path)}: {e.Message}");
+            }
+        }
+
+        /// <summary>Writes the active save. False (and logged) if nothing was written; the data stays in memory.</summary>
+        public static bool Save()
+        {
+            if (ActiveSlot < 0 || Active == null) return false;
+            try
+            {
+                Directory.CreateDirectory(Folder);
+                Active.lastPlayedUtc = DateTime.UtcNow.ToString("o");
+                // Write a temp file, then swap it in and keep the previous save as .bak: a crash at any
+                // point leaves at least one readable copy, and Peek tries all three.
+                string path = PathFor(ActiveSlot);
+                string temp = path + TempSuffix;
+                File.WriteAllText(temp, JsonUtility.ToJson(Active, true));
+                if (File.Exists(path)) File.Replace(temp, path, path + BackupSuffix, true);
+                else File.Move(temp, path);
+                return true;
+            }
+            catch (Exception e)
+            {
+                Debug.LogError($"[Save] Couldn't write slot {ActiveSlot + 1}: {e.Message}");
+                return false;
+            }
         }
 
         public static void Delete(int slot)
         {
-            if (Exists(slot)) File.Delete(PathFor(slot));
+            string path = PathFor(slot);
+            try
+            {
+                foreach (string file in new[] { path, path + TempSuffix, path + BackupSuffix })
+                    if (File.Exists(file)) File.Delete(file);
+            }
+            catch (Exception e)
+            {
+                Debug.LogError($"[Save] Couldn't delete slot {slot + 1}: {e.Message}");
+            }
             if (slot == ActiveSlot)
             {
                 ActiveSlot = -1;
