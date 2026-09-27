@@ -49,6 +49,10 @@ namespace TheDeep.UI.Terminal
 
             window.Content = RetroUI.Stretch(RetroUI.Rect("Content", rt), 8, TitleHeight + 10, 8, 8);
             app.BuildContent(window.Content);
+
+            // Buttons swallow pointer-down, so each one also tells its window to come to the front.
+            foreach (var s in rt.GetComponentsInChildren<Selectable>(true))
+                s.gameObject.AddComponent<FocusForwarder>().Window = window;
             return window;
         }
 
@@ -58,7 +62,24 @@ namespace TheDeep.UI.Terminal
             if (focused) transform.SetAsLastSibling();
         }
 
-        public void OnPointerDown(PointerEventData eventData) => Focused?.Invoke(this);
+        /// <summary>Ask the desktop to bring this window to the front.</summary>
+        public void RequestFocus() => Focused?.Invoke(this);
+
+        public void OnPointerDown(PointerEventData eventData) => RequestFocus();
+    }
+
+    /// <summary>
+    /// Sits next to a button inside a window. ExecuteEvents runs every pointer-down handler on the
+    /// object, so the button still works and the window gets raised too.
+    /// </summary>
+    public class FocusForwarder : MonoBehaviour, IPointerDownHandler
+    {
+        public TerminalWindow Window;
+
+        public void OnPointerDown(PointerEventData eventData)
+        {
+            if (Window != null) Window.RequestFocus();
+        }
     }
 
     /// <summary>Lets the title bar drag its window around, kept inside the desktop area.</summary>

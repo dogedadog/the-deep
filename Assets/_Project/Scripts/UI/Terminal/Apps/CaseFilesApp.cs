@@ -28,7 +28,9 @@ namespace TheDeep.UI.Terminal.Apps
                 "Four divers lost at this site. No distress call. Recover anything that belonged to them.", 13);
             RetroUI.Place(note.rectTransform, 0, 24, width, 36);
             list = RetroUI.Readout("Files", content, "", 14);
-            RetroUI.Place((RectTransform)list.transform.parent, 0, 64, width, WindowSize.y - 64 - 56);
+            var box = (RectTransform)list.transform.parent;
+            RetroUI.Place(box, 0, 64, width, WindowSize.y - 64 - 56);
+            box.gameObject.AddComponent<RectMask2D>(); // a long list clips at the bevel instead of spilling out
             Refresh();
         }
 
@@ -62,7 +64,8 @@ namespace TheDeep.UI.Terminal.Apps
             for (int i = 0; i < progress.CaseFiles.Count; i++)
             {
                 var file = progress.CaseFiles[i];
-                sb.Append($"#{i + 1:00}  {file.Title}\n     recovered on expedition #{file.Expedition}\n\n");
+                // One line per file, so all 11 possible files fit: index, expedition, title.
+                sb.Append($"#{i + 1:00}  EXP {file.Expedition,-3} {file.Title}\n");
             }
             list.text = sb.ToString();
         }

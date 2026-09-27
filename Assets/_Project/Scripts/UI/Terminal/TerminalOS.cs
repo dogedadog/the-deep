@@ -1,5 +1,9 @@
 using System;
 using System.Collections.Generic;
+using TheDeep.Core;
+using TheDeep.Data;
+using TheDeep.Player;
+using TheDeep.UI.Terminal.Apps;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
@@ -9,15 +13,24 @@ namespace TheDeep.UI.Terminal
     /// <summary>
     /// The retro desktop shown on the sub's computer screen (a world-space canvas).
     /// Builds the desktop, icons, taskbar and start menu, and opens a window per TerminalApp.
+    /// Tray lights and icon badges show crew alerts even with every window closed.
     /// </summary>
     [RequireComponent(typeof(Canvas), typeof(GraphicRaycaster))]
     public class TerminalOS : MonoBehaviour
     {
         const float TaskbarHeight = 40f;
+        const float PollInterval = 0.25f;
+        const float LowAir = 0.25f;
         public const string OsName = "ABYSSAL-DOS 3.1";
+
+        static readonly Color LedOff = new(0.2f, 0.24f, 0.21f);
+        static readonly Color Amber = new(1f, 0.72f, 0.15f);
+        static readonly Color Alarm = new(1f, 0.22f, 0.15f);
 
         readonly Dictionary<TerminalApp, TerminalWindow> windows = new();
         readonly Dictionary<TerminalWindow, Button> taskButtons = new();
+        readonly Dictionary<TerminalApp, Text> captions = new();
+        readonly Dictionary<TerminalApp, Image> iconArt = new();
 
         Canvas canvas;
         GraphicRaycaster raycaster;
@@ -29,6 +42,14 @@ namespace TheDeep.UI.Terminal
         TerminalWindow focused;
         int cascade;
 
+        // Crew alerts, polled from replicated state.
+        TerminalApp commsApp, mapApp;
+        Image dataLed, airLed, sigLed;
+        DiverController[] divers = Array.Empty<DiverController>();
+        float nextPoll, nextScan;
+        bool blink;
+        int commsBadge, mapBadge;
+
         public bool IsInteractive { get; private set; }
         public event Action LogOffRequested;
 
@@ -37,11 +58,23 @@ namespace TheDeep.UI.Terminal
             canvas = GetComponent<Canvas>();
             raycaster = GetComponent<GraphicRaycaster>();
             apps = GetComponents<TerminalApp>();
+            foreach (var app in apps)
+            {
+                if (app is CommsApp) commsApp = app;
+                else if (app is DiverMapApp) mapApp = app;
+            }
             Build();
             SetInteractive(false);
         }
 
-        void Update() => clock.text = DateTime.Now.ToString("HH:mm");
+        void Update()
+        {
+            if (Time.unscaledTime < nextPoll) return;
+            nextPoll = Time.unscaledTime + PollInterval;
+            clock.text = DateTime.Now.ToString("HH:mm");
+            blink = !blink; // flips at 4 Hz, so alerts blink at 2 Hz
+            PollCrew();
+        }
 
         public void SetEventCamera(Camera cam) => canvas.worldCamera = cam;
 
@@ -76,9 +109,15 @@ namespace TheDeep.UI.Terminal
             }
             if (!taskButtons.ContainsKey(window))
             {
-                var button = RetroUI.Button(app.Title, taskList, app.Title, () => Focus(window), 14);
+                var button = RetroUI.Button(app.Title, taskList, TaskTitle(app), () => Focus(window), 14);
                 var le = button.gameObject.AddComponent<LayoutElement>();
                 le.preferredWidth = 170;
+                // Long titles shrink instead of spilling out of the bar when many windows are open.
+                var label = button.GetComponentInChildren<Text>();
+                label.resizeTextForBestFit = true;
+                label.resizeTextMinSize = 10;
+                label.resizeTextMaxSize = 14;
+                label.verticalOverflow = VerticalWrapMode.Truncate;
                 taskButtons[window] = button;
             }
             Focus(window);
@@ -99,7 +138,20 @@ namespace TheDeep.UI.Terminal
             window.gameObject.SetActive(false);
             window.App.OnClosed();
             if (taskButtons.Remove(window, out Button button)) Destroy(button.gameObject);
-            if (focused == window) focused = null;
+
+            // The topmost window still open takes over focus.
+            for (int i = windowLayer.childCount - 1; i >= 0; i--)
+            {
+                var child = windowLayer.GetChild(i);
+                if (child.gameObject.activeSelf && child.TryGetComponent(out TerminalWindow next))
+                {
+                    Focus(next);
+                    return;
+                }
+            }
+            if (focused != null) focused.SetFocused(false);
+            focused = null;
+            UpdateTaskButtons();
         }
 
         void Focus(TerminalWindow window)
@@ -108,6 +160,78 @@ namespace TheDeep.UI.Terminal
             if (focused != null && focused != window) focused.SetFocused(false);
             focused = window;
             window.SetFocused(true);
+            UpdateTaskButtons();
+        }
+
+        /// <summary>The focused window's task button looks pressed in.</summary>
+        void UpdateTaskButtons()
+        {
+            foreach (var pair in taskButtons)
+                pair.Value.targetGraphic.color = pair.Key == focused ? RetroUI.Shadow : RetroUI.Face;
+        }
+
+        /// <summary>Tray lights and icon badges, read from replicated state only (works with no network).</summary>
+        void PollCrew()
+        {
+            int pending = 0, corrupted = 0, logged = 0;
+            var state = ExpeditionState.Instance;
+            if (state != null && state.IsSpawned)
+            {
+                var packets = state.Packets;
+                for (int i = 0; i < packets.Count; i++)
+                {
+                    var status = packets[i].Status;
+                    if (status == PacketStatus.Pending) pending++;
+                    else if (status == PacketStatus.Corrupted) corrupted++;
+                    else if (status == PacketStatus.Logged) logged++;
+                }
+            }
+
+            if (Time.unscaledTime >= nextScan)
+            {
+                nextScan = Time.unscaledTime + 1f;
+                divers = FindObjectsByType<DiverController>(FindObjectsSortMode.None);
+            }
+            int inTrouble = 0;
+            bool weakSignal = false;
+            var subPos = TheDeep.Submarine.SubNavigation.SubPosition;
+            foreach (var diver in divers)
+            {
+                // A body left at an earlier station no longer holds the AIR light (same rule as the Diver Map).
+                if (diver == null || !diver.IsSpawned || !diver.IsDiving || DiverMapApp.IsLost(diver, subPos)) continue;
+                var health = diver.GetComponent<DiverHealth>();
+                bool dead = health != null && health.IsDead;
+                if (dead || (health != null && health.Air01 < LowAir)) inTrouble++;
+                if (!dead && SignalModel.Strength(diver.transform.position) < SignalModel.CorruptionThreshold) weakSignal = true;
+            }
+
+            dataLed.color = !blink ? LedOff : corrupted > 0 ? Alarm : pending > 0 ? Amber : LedOff;
+            airLed.color = inTrouble > 0 ? Alarm : LedOff;
+            sigLed.color = weakSignal ? Amber : LedOff;
+            ShowBadge(commsApp, pending + corrupted + logged, corrupted > 0, ref commsBadge);
+            ShowBadge(mapApp, inTrouble, true, ref mapBadge);
+        }
+
+        /// <summary>Adds "(n)" to an app's icon caption and task button, and blinks its icon while n > 0.</summary>
+        void ShowBadge(TerminalApp app, int count, bool urgent, ref int shown)
+        {
+            if (app == null) return;
+            if (count != shown)
+            {
+                shown = count;
+                string title = TaskTitle(app);
+                if (captions.TryGetValue(app, out Text caption)) caption.text = title;
+                if (windows.TryGetValue(app, out TerminalWindow window) && taskButtons.TryGetValue(window, out Button button))
+                    button.GetComponentInChildren<Text>().text = title;
+            }
+            if (iconArt.TryGetValue(app, out Image art))
+                art.color = count > 0 && blink ? (urgent ? Alarm : Amber) : app.IconColor;
+        }
+
+        string TaskTitle(TerminalApp app)
+        {
+            int badge = app == commsApp ? commsBadge : app == mapApp ? mapBadge : 0;
+            return badge > 0 ? $"{app.Title} ({badge})" : app.Title;
         }
 
         void Build()
@@ -119,8 +243,8 @@ namespace TheDeep.UI.Terminal
             RetroUI.Stretch(desktop.rectTransform);
             desktop.gameObject.AddComponent<DesktopBackground>().Clicked = () => startMenu.SetActive(false);
             var logo = RetroUI.Label("Logo", desktop.transform, "ABYSSAL SYSTEMS\nDEEP SURVEY DIVISION", 34,
-                new Color(1, 1, 1, 0.07f), TextAnchor.MiddleCenter, FontStyle.Bold);
-            RetroUI.Stretch(logo.rectTransform, 0, 0, 0, TaskbarHeight);
+                new Color(1, 1, 1, 0.07f), TextAnchor.LowerRight, FontStyle.Bold);
+            RetroUI.Stretch(logo.rectTransform, 260, 0, 24, TaskbarHeight + 16); // bottom right, clear of the icon columns
 
             // Icons in columns of five down the left side.
             for (int i = 0; i < apps.Length; i++)
@@ -156,6 +280,9 @@ namespace TheDeep.UI.Terminal
             capRt.sizeDelta = new Vector2(0, 40);
             capRt.anchoredPosition = Vector2.zero;
 
+            iconArt[app] = art;
+            captions[app] = caption;
+
             var icon = slot.gameObject.AddComponent<DesktopIcon>();
             icon.Highlight = slot;
             icon.DoubleClicked = () => Open(app);
@@ -175,7 +302,7 @@ namespace TheDeep.UI.Terminal
             RetroUI.Place(start.GetComponent<RectTransform>(), 4, 5, 90, 30);
 
             taskList = RetroUI.Rect("Tasks", barRt);
-            RetroUI.Stretch(taskList, 104, 5, 110, 5);
+            RetroUI.Stretch(taskList, 104, 5, 160, 5);
             var layout = taskList.gameObject.AddComponent<HorizontalLayoutGroup>();
             layout.spacing = 4;
             layout.childControlWidth = true;
@@ -187,10 +314,25 @@ namespace TheDeep.UI.Terminal
             var trayRt = tray.rectTransform;
             trayRt.anchorMin = trayRt.anchorMax = trayRt.pivot = new Vector2(1, 0.5f);
             trayRt.anchoredPosition = new Vector2(-4, 0);
-            trayRt.sizeDelta = new Vector2(96, 30);
+            trayRt.sizeDelta = new Vector2(150, 30);
             RetroUI.Bevel(trayRt, raised: false);
+            // Status lights: new data, a diver low on air or dead, a diver out of clean signal range.
+            dataLed = TrayLed(trayRt, "D", 5);
+            airLed = TrayLed(trayRt, "AIR", 29);
+            sigLed = TrayLed(trayRt, "SIG", 64);
             clock = RetroUI.Label("Clock", trayRt, "00:00", 16, RetroUI.Ink, TextAnchor.MiddleCenter);
-            RetroUI.Stretch(clock.rectTransform);
+            RetroUI.Stretch(clock.rectTransform, 100, 0, 0, 0);
+        }
+
+        static Image TrayLed(RectTransform tray, string label, float x)
+        {
+            var led = RetroUI.Panel("Led" + label, tray, LedOff);
+            RetroUI.Place(led.rectTransform, x, 10, 10, 10);
+            RetroUI.Bevel(led.rectTransform, raised: false, 1f);
+            var text = RetroUI.Label("Led" + label + "Text", tray, label, 11, RetroUI.Ink);
+            RetroUI.Place(text.rectTransform, x + 12, 0, 22, 30);
+            text.horizontalOverflow = HorizontalWrapMode.Overflow;
+            return led;
         }
 
         void BuildStartMenu(RectTransform root)
