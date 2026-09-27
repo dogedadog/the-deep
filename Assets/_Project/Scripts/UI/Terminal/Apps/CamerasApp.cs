@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using TheDeep.Player;
 using TheDeep.Submarine;
 using UnityEngine;
 using UnityEngine.UI;
@@ -9,13 +10,14 @@ namespace TheDeep.UI.Terminal.Apps
     /// <summary>
     /// Live feed from the hull cameras, dressed up as a subsea CCTV monitor
     /// (REC light, timestamp, depth/heading readout, viewfinder brackets). Only the selected
-    /// camera renders, and only while this window is open.
+    /// camera renders, only while this window is open, and only while someone can see the monitor.
     /// </summary>
     public class CamerasApp : TerminalApp
     {
         const int FeedWidth = 384, FeedHeight = 240; // deliberately low-res
         const float FeedW = 624f, FeedH = 390f;
         const float SwitchStatic = 0.35f;
+        const float WatchDistance = 8f; // the monitor is readable from anywhere in the cabin
 
         [SerializeField] Material feedMaterial;
         [SerializeField, Tooltip("Depth of the sub's origin below the surface, for the readout.")]
@@ -25,6 +27,11 @@ namespace TheDeep.UI.Terminal.Apps
         Button[] numberButtons = Array.Empty<Button>();
         RenderTexture feed;
         Material material;
+        TerminalOS os;
+        StaticHiss hiss;
+        PlayerNetwork viewer;
+        DiverController viewerDiver;
+        DiverHealth viewerHealth;
         Text cameraLabel, timeLabel, dataLabel, signalLabel;
         GameObject recDot, noSignal;
         int current;
@@ -40,6 +47,12 @@ namespace TheDeep.UI.Terminal.Apps
         {
             cameras = FindObjectsByType<SubCamera>(FindObjectsSortMode.None).OrderBy(c => c.Number).ToArray();
             feed = new RenderTexture(FeedWidth, FeedHeight, 24) { filterMode = FilterMode.Point, name = "CCTVFeed" };
+            os = GetComponent<TerminalOS>();
+
+            // The monitor's speaker (its own object: the other apps share this one).
+            var speaker = new GameObject("CamerasSpeaker");
+            speaker.transform.SetParent(transform, false);
+            hiss = speaker.AddComponent<StaticHiss>();
 
             var frame = RetroUI.Panel("FeedFrame", content, Color.black);
             RetroUI.Place(frame.rectTransform, 0, 0, FeedW, FeedH);
@@ -143,6 +156,7 @@ namespace TheDeep.UI.Terminal.Apps
         {
             open = false;
             foreach (var cam in cameras) cam.SetLive(false, null);
+            if (hiss != null) hiss.Level = 0f;
         }
 
         void Select(int index)
@@ -159,14 +173,34 @@ namespace TheDeep.UI.Terminal.Apps
                 numberButtons[i].targetGraphic.color = i == current ? RetroUI.Shadow : RetroUI.Face;
             }
             staticUntil = Time.time + SwitchStatic;
+            if (hiss != null) hiss.Click();
+        }
+
+        /// <summary>True while the local player could see the monitor: aboard, alive, and seated or in the cabin.</summary>
+        bool Watched()
+        {
+            var local = PlayerNetwork.Local;
+            if (local == null) return false;
+            if (local != viewer)
+            {
+                viewer = local;
+                viewerDiver = local.GetComponent<DiverController>();
+                viewerHealth = local.GetComponent<DiverHealth>();
+            }
+            if (viewerDiver != null && viewerDiver.IsDiving) return false;
+            if (viewerHealth != null && viewerHealth.IsDead) return false;
+            if (os != null && os.IsInteractive) return true;
+            return (local.transform.position - transform.position).sqrMagnitude < WatchDistance * WatchDistance;
         }
 
         void Update()
         {
             if (!open || cameras.Length == 0) return;
 
-            if (material != null)
-                material.SetFloat("_Static", Mathf.Clamp01((staticUntil - Time.time) / SwitchStatic));
+            float switching = Mathf.Clamp01((staticUntil - Time.time) / SwitchStatic);
+            if (material != null) material.SetFloat("_Static", switching);
+            if (hiss != null) hiss.Level = os != null && os.IsInteractive ? switching : 0f;
+            cameras[current].Render(Watched());
             recDot.SetActive(Time.time % 1.2f < 0.7f);
 
             SubCamera cam = cameras[current];
@@ -185,7 +219,11 @@ namespace TheDeep.UI.Terminal.Apps
 
         void OnDestroy()
         {
-            if (feed != null) feed.Release();
+            if (feed != null)
+            {
+                feed.Release();
+                Destroy(feed);
+            }
             if (material != null) Destroy(material);
         }
     }
