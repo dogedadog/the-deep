@@ -22,9 +22,11 @@ namespace TheDeep.Footage
     /// <summary>A piece of sound picked up while filming (8 kHz mu-law, like the radio).</summary>
     public struct FootageAudio
     {
-        public const byte OwnVoice = 0, Nearby = 1, Radio = 2;
+        /// <summary>Helmet: the suit's own sounds (breathing, bubbles, knocks), heard dry rather than through water.</summary>
+        public const byte OwnVoice = 0, Nearby = 1, Radio = 2, Helmet = 3;
 
-        public float Time;
+        /// <summary>Where the sound starts, in 8 kHz samples since the clip started.</summary>
+        public int Offset;
         public byte Channel;
         public byte Signal;       // radio quality, 0-255
         public byte[] Samples;
@@ -36,13 +38,16 @@ namespace TheDeep.Footage
     /// </summary>
     public class FootageClip
     {
+        /// <summary>First byte of <see cref="ToBytes"/>. Chips are never saved, so only the current build's format is read.</summary>
+        const byte Format = 2;
+
         public string Title = "";
         public string Timestamp = "";
         public int Diver;
         public bool EndsInDeath;
         public bool Corrupted;
         public readonly List<FootageFrame> Frames = new();
-        /// <summary>Voices heard while filming, in time order.</summary>
+        /// <summary>Sound heard while filming. Entries may overlap (several people talking at once); playback mixes them.</summary>
         public readonly List<FootageAudio> Audio = new();
 
         public float Duration => Frames.Count > 0 ? Frames[^1].Time : 0f;
@@ -92,6 +97,7 @@ namespace TheDeep.Footage
         {
             using var stream = new MemoryStream();
             using var w = new BinaryWriter(stream);
+            w.Write(Format);
             w.Write(Title);
             w.Write(Timestamp);
             w.Write(Diver);
@@ -113,7 +119,7 @@ namespace TheDeep.Footage
             w.Write(Audio.Count);
             foreach (var a in Audio)
             {
-                w.Write(a.Time);
+                w.Write(a.Offset);
                 w.Write(a.Channel);
                 w.Write(a.Signal);
                 w.Write(a.Samples.Length);
@@ -125,6 +131,7 @@ namespace TheDeep.Footage
         public static FootageClip FromBytes(byte[] data)
         {
             using var r = new BinaryReader(new MemoryStream(data));
+            if (r.ReadByte() != Format) return new FootageClip { Title = "UNREADABLE CHIP", Corrupted = true };
             var clip = new FootageClip
             {
                 Title = r.ReadString(),
@@ -156,7 +163,7 @@ namespace TheDeep.Footage
             int audioCount = r.ReadInt32();
             for (int i = 0; i < audioCount; i++)
             {
-                var a = new FootageAudio { Time = r.ReadSingle(), Channel = r.ReadByte(), Signal = r.ReadByte() };
+                var a = new FootageAudio { Offset = r.ReadInt32(), Channel = r.ReadByte(), Signal = r.ReadByte() };
                 a.Samples = r.ReadBytes(r.ReadInt32());
                 clip.Audio.Add(a);
             }
