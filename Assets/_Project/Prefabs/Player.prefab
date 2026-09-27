@@ -913,7 +913,7 @@ MonoBehaviour:
   headlamp: {fileID: 5947724542239506153}
   swimAcceleration: 8
   boostAcceleration: 14
-  verticalAcceleration: 6.5
+  verticalAcceleration: 9
   sinkAcceleration: 0.25
   lookSensitivity: 0.08
 --- !u!114 &1741573124626089281

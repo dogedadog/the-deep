@@ -4,7 +4,7 @@ namespace TheDeep.Footage
 {
     /// <summary>
     /// The last recordings of Dive Team 7, generated the same way on every machine. Each diver
-    /// drifts along the trench toward the glyph stones, then something enormous comes out of the
+    /// drifts across the shaft floor toward the glyph stones, then something enormous comes out of the
     /// dark above them. The camera ends where the body lies.
     /// </summary>
     public static class LostDiverFootage
@@ -17,8 +17,8 @@ namespace TheDeep.Footage
         public static bool IsLostDiverChip(int chipId) => chipId < 0 && chipId >= -Count;
         public static string Title(int diverIndex) => $"TEAM 7 / DIVER {diverIndex + 1} / HELMET CAM";
 
-        static readonly Vector3 Bell = new(248f, -1203f, 5f);
-        static readonly Vector3 Stones = new(292f, -1200f, 0f);
+        static readonly Vector3 Bell = new(-12f, -1199f, 8f);
+        static readonly Vector3 Stones = new(14f, -1199f, -6f);
 
         public static FootageClip Create(int diverIndex, Vector3 bodyPosition)
         {
@@ -73,7 +73,7 @@ namespace TheDeep.Footage
                 else
                 {
                     float k = (t - cruise - encounter) / fall;
-                    // Grabbed / struck: tumbling down onto the trench floor where the body lies now.
+                    // Grabbed / struck: tumbling down onto the shaft floor where the body lies now.
                     f.Position = Vector3.Lerp(stoneView, bodyPosition + Vector3.up * 0.5f, k * k);
                     f.Rotation = Quaternion.Euler(40f + k * 60f + Mathf.Sin(t * 9f) * 20f, 90f + k * 540f, Mathf.Sin(t * 6f) * 40f);
                     f.Lamp = rng.NextDouble() < 0.5 - k * 0.4;

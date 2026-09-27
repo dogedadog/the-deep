@@ -195,7 +195,7 @@ namespace TheDeep.EditorTools
             Physics.SyncTransforms();
             float best = float.MinValue;
             foreach (var hit in Physics.RaycastAll(new Vector3(x, fallback + 40f, z), Vector3.down, 120f))
-                if (hit.collider.name.StartsWith("Terrain_") && hit.point.y > best) best = hit.point.y;
+                if (hit.collider.name.StartsWith("Terrain_") && hit.normal.y > 0.3f && hit.point.y > best) best = hit.point.y; // skip wall faces
             return best > float.MinValue ? best : fallback;
         }
 

@@ -51,7 +51,7 @@ namespace TheDeep.EditorTools
             BuildSeafloor(new GameObject("Environment").transform);
             BuildPointsOfInterest(new GameObject("PointsOfInterest").transform);
             var bodyPrefab = BuildBodyPrefab();
-            BuildLostDivers(bodyPrefab, GameObject.Find("Zone4_Trench").transform);
+            BuildLostDivers(bodyPrefab, GameObject.Find("Zone4_Floor").transform);
             BuildFootageRig();
             BuildExpeditionState();
             BuildSpawnPoints(Group("SpawnPoints", sub));

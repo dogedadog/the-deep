@@ -7,7 +7,7 @@ namespace TheDeep.Footage
 {
     /// <summary>
     /// A dead diver on the seabed: either a crewmate (spawned where they died) or one of Dive Team 7
-    /// (placed in the trench). Their camera chips are still in the suit; a diver can take them.
+    /// (placed on the shaft floor). Their camera chips are still in the suit; a diver can take them.
     /// </summary>
     public class DiverBody : NetworkBehaviour, IProximityInteractable
     {

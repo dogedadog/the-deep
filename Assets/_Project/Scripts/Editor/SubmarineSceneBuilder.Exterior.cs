@@ -17,7 +17,6 @@ namespace TheDeep.EditorTools
     {
         const float HullY = 1.3f;
         const float HullRadius = 2.45f;
-        const float SeafloorY = -9f;
 
         static void BuildExterior(Transform t)
         {

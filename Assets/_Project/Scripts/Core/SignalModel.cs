@@ -10,8 +10,8 @@ namespace TheDeep.Core
     {
         /// <summary>Middle of the sub's hull; updated when the sub moves between dive stations.</summary>
         public static Vector3 SubCenter { get; set; } = new(0f, 1.3f, 0f);
-        const float FullStrengthRange = 25f;
-        const float DeadRange = 80f;
+        const float FullStrengthRange = 35f;
+        const float DeadRange = 100f;
 
         /// <summary>Below this, transmitted data arrives corrupted and must be repaired on the terminal.</summary>
         public const float CorruptionThreshold = 0.6f;

@@ -55,7 +55,7 @@ namespace TheDeep.EditorTools
             return prefab;
         }
 
-        /// <summary>Dive Team 7: four bodies in the trench, faded suits, their helmet cameras still in them.</summary>
+        /// <summary>Dive Team 7: four bodies on the shaft floor, faded suits, their helmet cameras still in them.</summary>
         static void BuildLostDivers(GameObject bodyPrefab, Transform parent)
         {
             var faded = Mat("Body_FadedSuit", null, new Color(0.35f, 0.36f, 0.3f), smoothness: 0.15f);

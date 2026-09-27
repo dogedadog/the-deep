@@ -30,7 +30,7 @@ namespace TheDeep.Progression
         /// <summary>Multiplier on walkie-talkie range.</summary>
         public static float SignalRange(int level) => 1f + 0.35f * level;
         public static float SwimSpeed(int level) => 1f + 0.15f * level;
-        public static int DepthRating(int level) => 1300 + 400 * level;
+        public static int DepthRating(int level) => 1400 + 380 * level;
         public static int Strength(int level) => 100 + 25 * level;
 
         /// <summary>Human-readable effect of a level, for the Balance app.</summary>

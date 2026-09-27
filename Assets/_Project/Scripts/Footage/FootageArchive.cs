@@ -206,7 +206,7 @@ namespace TheDeep.Footage
         {
             foreach (var body in FindObjectsByType<DiverBody>(FindObjectsSortMode.None))
                 if (body.LostDiverIndex == index) return body.transform.position;
-            return new Vector3(260f, -1205f, 0f);
+            return new Vector3(0f, -1200f, 0f);
         }
 
         [Rpc(SendTo.Server)]

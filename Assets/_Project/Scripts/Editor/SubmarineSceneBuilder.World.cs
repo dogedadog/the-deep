@@ -7,28 +7,35 @@ using UnityEngine;
 namespace TheDeep.EditorTools
 {
     /// <summary>
-    /// The dive site: a canyon that falls away in stages. The sub descends between four stations:
-    ///   1 THE SHELF (1280 m)        - silt shelf between rock walls with caves, ending at a sheer drop.
-    ///   2 THE WALL (1450 m)         - open black water against the cliff under the shelf. No floor in sight.
-    ///   3 ABYSSAL PLAIN (1800 m)    - wide dark plain: a whale fall, black smokers, worm forests.
-    ///   4 HADAL TRENCH (2420 m)     - a narrow slot at the bottom. Dive Team 7 is here.
+    /// The dive site: one enormous vertical shaft. The sub hangs high up in open water with rock walls
+    /// on every side, and divers swim DOWN from it. Ledges and caves stick out of the walls at
+    /// different depths. The sub can be lowered to four stations, one above the other:
+    ///   1 UPPER SHAFT (1280 m)      - ledges 15-50 m under the sub.
+    ///   2 THE WALL (1580 m)         - ledges and caves below, something circling in the dark underneath.
+    ///   3 ABYSSAL TERRACE (1980 m)  - a huge rock shelf 30 m down: a whale fall, black smokers, worms.
+    ///   4 SHAFT FLOOR (2410 m)      - the bottom, 70 m down (needs a longer rope). Dive Team 7 is here.
     /// </summary>
     public static partial class SubmarineSceneBuilder
     {
-        static readonly Vector3 Station2 = new(100f, -170f, 0f);
-        static readonly Vector3 Station3 = new(180f, -520f, 0f);
-        static readonly Vector3 Station4 = new(262f, -1140f, 0f);
-        const float AbyssFloorY = -562f;
-        const float TrenchFloorY = -1205f;
+        static readonly Vector3 Station2 = new(0f, -300f, 0f);
+        static readonly Vector3 Station3 = new(10f, -700f, 0f);
+        static readonly Vector3 Station4 = new(8f, -1130f, 0f);
+        const float ShaftTop = 45f;
+        const float ShaftBottom = -1215f;
+        const float WallX = 38f, WallZ = 34f;
+        const float TerraceY = -730f;
+        const float FloorY = -1200f;
 
         static Transform[] stationPoints;
         static Light downwellingLight;
-        static Material rockWall, silt2, deepSilt, leviathanSkin, bioLight, beaconYellow;
+        static Vector3[] lostDiverSpots;
+        static Material rockWall, silt2, deepSilt, leviathanSkin, bioLight, beaconYellow, boulderRock;
 
         static void BuildWorld(Transform t, Material rockMat, Material siltMat, Light downwelling)
         {
             InitPoiMaterials();
             downwellingLight = downwelling;
+            boulderRock = rockMat;
             rockWall = Mat("Env_RockWall", ProceduralTextures.Rock(), new Color(1.6f, 1.6f, 1.65f), smoothness: 0.2f); // texture is dark; brighten so lit rock reads
             silt2 = siltMat;
             deepSilt = Mat("Env_DeepSilt", ProceduralTextures.Silt(), new Color(0.6f, 0.6f, 0.62f), smoothness: 0.05f);
@@ -36,18 +43,19 @@ namespace TheDeep.EditorTools
             bioLight = Mat("Creature_Biolight", null, new Color(0.4f, 0.9f, 1f), emission: new Color(0.5f, 1.6f, 2f));
             beaconYellow = Mat("POI_BeaconYellow", null, new Color(0.8f, 0.6f, 0.08f), metallic: 0.3f, smoothness: 0.4f);
 
-            BuildShelf(Group("Zone1_Shelf", t), rockMat);
+            BuildShaftWalls(Group("Shaft", t));
+            BuildUpperShaft(Group("Zone1_UpperShaft", t));
             BuildWallZone(Group("Zone2_Wall", t));
-            BuildAbyss(Group("Zone3_Abyss", t));
-            BuildTrench(Group("Zone4_Trench", t));
+            BuildTerrace(Group("Zone3_Terrace", t));
+            BuildShaftFloor(Group("Zone4_Floor", t));
 
             var stations = Group("DiveStations", t);
             stationPoints = new[]
             {
-                StationPoint(stations, "Station1_Shelf", Vector3.zero),
+                StationPoint(stations, "Station1_UpperShaft", Vector3.zero),
                 StationPoint(stations, "Station2_Wall", Station2),
-                StationPoint(stations, "Station3_Abyss", Station3),
-                StationPoint(stations, "Station4_Trench", Station4),
+                StationPoint(stations, "Station3_Terrace", Station3),
+                StationPoint(stations, "Station4_Floor", Station4),
             };
         }
 
@@ -58,55 +66,85 @@ namespace TheDeep.EditorTools
             return p;
         }
 
-        // ------------------------------------------------------------------ zone 1: the shelf
+        // ------------------------------------------------------------------ the shaft
 
-        static void BuildShelf(Transform t, Material rockMat)
+        /// <summary>Four huge rock walls facing inward, from above the sub all the way to the floor, with caves at several depths.</summary>
+        static void BuildShaftWalls(Transform t)
         {
-            // Silt shelf that rises toward the canyon walls and dips into a lip before the drop-off at x = 70.
-            Heightfield("S1_Floor", t, new Vector3(-7.5f, SeafloorY - 0.3f, 0f), 155f, 92f, 2.5f, 1.3f, 0.05f, 1, silt2, (x, z) =>
-            {
-                float nearWall = Mathf.Max(0f, Mathf.Abs(z) - 30f);
-                float lip = x > 60f ? -(x - 60f) * 0.35f : 0f;
-                return nearWall * nearWall * 0.06f + lip;
-            });
+            float height = ShaftTop - ShaftBottom;
+            float Up(float y) => y - ShaftBottom; // world height -> distance up the wall
 
-            // Canyon walls with caves.
-            var north = new Vector3(-85f, SeafloorY - 8f, 44f);
-            CliffWall("S1_WallNorth", t, north, Vector3.right, Vector3.back, 155f, 85f, 3f, 3f, 2, rockWall,
-                new CaveMouth { U = 40f, V = 9f, Radius = 3.4f }, new CaveMouth { U = 115f, V = 11f, Radius = 3.8f });
-            Tunnel("S1_CaveN1", t, WallPoint(north, Vector3.right, 40f, 9f), Vector3.forward, 3.4f, 24f, 3);
-            Tunnel("S1_CaveN2", t, WallPoint(north, Vector3.right, 115f, 11f), Vector3.forward, 3.8f, 30f, 4);
+            // West wall (x = -38) facing +x.
+            var west = new Vector3(-WallX, ShaftBottom, -45f);
+            CliffWall("Shaft_West", t, west, Vector3.forward, Vector3.right, 90f, height, 4f, 5f, 31, rockWall,
+                new CaveMouth { U = 40f, V = Up(-35f), Radius = 3.6f }, new CaveMouth { U = 58f, V = Up(FloorY + 12f), Radius = 4f });
+            Tunnel("Cave_WestUpper", t, WallPoint(west, Vector3.forward, 40f, Up(-35f)), Vector3.left, 3.6f, 24f, 32);
+            Tunnel("Cave_WestFloor", t, WallPoint(west, Vector3.forward, 58f, Up(FloorY + 12f)), Vector3.left, 4f, 26f, 33);
 
-            var south = new Vector3(-85f, SeafloorY - 8f, -44f);
-            CliffWall("S1_WallSouth", t, south, Vector3.right, Vector3.forward, 155f, 85f, 3f, 3f, 5, rockWall,
-                new CaveMouth { U = 75f, V = 8f, Radius = 3.2f }, new CaveMouth { U = 135f, V = 10f, Radius = 3.6f });
-            Tunnel("S1_CaveS1", t, WallPoint(south, Vector3.right, 75f, 8f), Vector3.back, 3.2f, 22f, 6);
-            Tunnel("S1_CaveS2", t, WallPoint(south, Vector3.right, 135f, 10f), Vector3.back, 3.6f, 26f, 7);
+            // East wall (x = +38) facing -x.
+            var east = new Vector3(WallX, ShaftBottom, 45f);
+            CliffWall("Shaft_East", t, east, Vector3.back, Vector3.left, 90f, height, 4f, 5f, 34, rockWall,
+                new CaveMouth { U = 52f, V = Up(Station2.y - 30f), Radius = 4.2f });
+            Tunnel("Cave_EastWall", t, WallPoint(east, Vector3.back, 52f, Up(Station2.y - 30f)), Vector3.right, 4.2f, 26f, 35);
 
-            // Back of the canyon, and the sheer drop-off at the far end that the sub descends past.
-            CliffWall("S1_WallBack", t, new Vector3(-85f, SeafloorY - 8f, -46f), Vector3.forward, Vector3.right, 92f, 85f, 3f, 3f, 8, rockWall);
-            var edge = new Vector3(70f, -440f, -48f);
-            CliffWall("S1_DropOff", t, edge, Vector3.forward, Vector3.right, 96f, 431f, 4f, 5f, 9, rockWall,
-                new CaveMouth { U = 60f, V = 275f, Radius = 4.5f }, new CaveMouth { U = 33f, V = 250f, Radius = 3.8f });
-            Tunnel("S2_CaveA", t, WallPoint(edge, Vector3.forward, 60f, 275f), Vector3.left, 4.5f, 28f, 10);
-            Tunnel("S2_CaveB", t, WallPoint(edge, Vector3.forward, 33f, 250f), Vector3.left, 3.8f, 24f, 11);
+            // North wall (z = +34) facing -z.
+            var north = new Vector3(45f, ShaftBottom, WallZ);
+            CliffWall("Shaft_North", t, north, Vector3.left, Vector3.back, 90f, height, 4f, 5f, 36, rockWall,
+                new CaveMouth { U = 30f, V = Up(-14f), Radius = 3.4f }, new CaveMouth { U = 62f, V = Up(TerraceY + 6f), Radius = 4.5f });
+            Tunnel("Cave_NorthUpper", t, WallPoint(north, Vector3.left, 30f, Up(-14f)), Vector3.forward, 3.4f, 22f, 37);
+            Tunnel("Cave_NorthTerrace", t, WallPoint(north, Vector3.left, 62f, Up(TerraceY + 6f)), Vector3.forward, 4.5f, 26f, 38);
 
-            // Boulders on the shelf, away from the sub and the walls.
+            // South wall (z = -34) facing +z.
+            var south = new Vector3(-45f, ShaftBottom, -WallZ);
+            CliffWall("Shaft_South", t, south, Vector3.right, Vector3.forward, 90f, height, 4f, 5f, 39, rockWall,
+                new CaveMouth { U = 55f, V = Up(Station2.y - 40f), Radius = 3.8f });
+            Tunnel("Cave_SouthWall", t, WallPoint(south, Vector3.right, 55f, Up(Station2.y - 40f)), Vector3.back, 3.8f, 24f, 40);
+        }
+
+        /// <summary>A thick rock shelf sticking out of the wall. Named Terrain_ so things can be placed on top of it.</summary>
+        static void Slab(string name, Transform t, Vector3 center, Vector3 size)
+        {
+            var slab = Primitive(PrimitiveType.Sphere, "Terrain_" + name, t, center, size, rockWall, collider: false);
+            slab.AddComponent<MeshCollider>().sharedMesh = slab.GetComponent<MeshFilter>().sharedMesh;
+            slab.isStatic = true;
+        }
+
+        // ------------------------------------------------------------------ zone 1: upper shaft
+
+        /// <summary>Ledges under the sub at station 1 (center, size). The first points of interest sit on these.</summary>
+        static readonly (Vector3 center, Vector3 size)[] UpperLedges =
+        {
+            (new Vector3(-29f, -18f, 4f), new Vector3(16f, 3.5f, 20f)),   // 0 west
+            (new Vector3(8f, -30f, 26f), new Vector3(22f, 3.5f, 13f)),    // 1 north
+            (new Vector3(28f, -40f, -6f), new Vector3(15f, 3.5f, 18f)),   // 2 east
+            (new Vector3(-5f, -46f, -26f), new Vector3(20f, 3.5f, 13f)),  // 3 south
+        };
+
+        /// <summary>A point on top of upper ledge <paramref name="index"/>, offset from its middle.</summary>
+        static Vector3 OnLedge(int index, float dx, float dz, float lift = 0f)
+        {
+            var c = UpperLedges[index].center;
+            return OnGround(c.x + dx, c.z + dz, c.y, lift);
+        }
+
+        static void BuildUpperShaft(Transform t)
+        {
+            for (int i = 0; i < UpperLedges.Length; i++) Slab("Ledge" + i, t, UpperLedges[i].center, UpperLedges[i].size);
+
+            // A few boulders on the ledges.
             var rng = new System.Random(5);
             float R(float min, float max) => min + (float)rng.NextDouble() * (max - min);
-            for (int i = 0; i < 55; i++)
+            for (int i = 0; i < 12; i++)
             {
-                float x = R(-75f, 58f), z = R(-33f, 33f);
-                if (new Vector2(x, z).magnitude < 11f) continue;
-                var scale = new Vector3(R(1.5f, 7f), R(0.8f, 4f), R(1.5f, 7f));
-                var boulder = Primitive(PrimitiveType.Sphere, "Boulder", t, OnGround(x, z, SeafloorY, scale.y * 0.15f), scale, rockMat, collider: true);
+                var scale = new Vector3(R(1f, 2.6f), R(0.6f, 1.6f), R(1f, 2.6f));
+                var boulder = Primitive(PrimitiveType.Sphere, "Boulder", t, OnLedge(i % UpperLedges.Length, R(-4f, 4f), R(-4f, 4f), scale.y * 0.15f), scale, boulderRock, collider: true);
                 boulder.transform.localRotation = Quaternion.Euler(R(-15, 15), R(0, 360), R(-15, 15));
             }
 
-            // Something on the seabed that shouldn't be there: an old dive helmet and a snapped tether.
+            // Something that shouldn't be here: an old dive helmet and a snapped tether on the deepest ledge.
             var helmetMat = Mat("Env_OldBrass", null, new Color(0.3f, 0.26f, 0.15f), metallic: 0.6f, smoothness: 0.2f);
-            Sphere("OldDiveHelmet", t, OnGround(9f, 7f, SeafloorY, 0.15f), 0.4f, helmetMat);
-            OldRope(t, OnGround(9.4f, 7.2f, SeafloorY, 0.04f), 7, 55);
+            Sphere("OldDiveHelmet", t, OnLedge(3, 3f, 1f, 0.15f), 0.4f, helmetMat);
+            OldRope(t, OnLedge(3, 3.4f, 1.2f, 0.04f), 6, 55);
         }
 
         /// <summary>A cave running from a wall's mouth into the rock along <paramref name="into"/>, wandering a bit.</summary>
@@ -118,7 +156,7 @@ namespace TheDeep.EditorTools
             var path = new Vector3[5];
             path[0] = mouth - into * 1.5f; // start just outside so the mouth overlaps the wall
             for (int i = 1; i < path.Length; i++)
-                path[i] = mouth + into * (length * i / (path.Length - 1)) + side * R(-3f, 3f) + Vector3.up * R(-1.5f, 1.5f);
+                path[i] = mouth + into * (length * i / (path.Length - 1)) + side * R(-3f, 3f) + Vector3.up * R(-1f, 1f);
             CaveTunnel(name, t, path, radius, seed, rockWall);
         }
 
@@ -139,25 +177,20 @@ namespace TheDeep.EditorTools
 
         static void BuildWallZone(Transform t)
         {
-            // Ledges sticking out of the cliff under the shelf, and things living on them.
-            Ledge(t, new Vector3(72.5f, -160f, -6f), 5f);
-            Ledge(t, new Vector3(72.5f, -182f, 18f), 4f);
-            Ledge(t, new Vector3(72.5f, -205f, 2f), 6f);
-            CoralLedge(t, 11, new Vector3(74f, -159.3f, -6f));
-            SurveyBeacon(t, 14, new Vector3(74f, -181.4f, 18f));
+            // Ledges below the station, and things living on them.
+            float s = Station2.y;
+            Slab("Ledge_Coral", t, new Vector3(-29f, s - 22f, -8f), new Vector3(15f, 3f, 16f));
+            Slab("Ledge_Beacon", t, new Vector3(12f, s - 36f, 26f), new Vector3(18f, 3f, 13f));
+            Slab("Ledge_Deep", t, new Vector3(26f, s - 48f, 10f), new Vector3(14f, 3f, 14f));
+            CoralLedge(t, 11, OnGround(-29f, -8f, s - 22f));
+            SurveyBeacon(t, 14, OnGround(12f, 26f, s - 36f));
 
-            // Inside the caves: crystals in one, glow-worms in the other.
-            CrystalVein(t, 12, new Vector3(52f, -166f, 13f), 90f);
-            GlowGrotto(t, 13, new Vector3(51f, -190f, -14f));
+            // Inside the caves: crystals in the east one, glow-worms in the south one.
+            CrystalVein(t, 12, new Vector3(WallX + 10f, s - 31f, 45f - 52f), 90f);
+            GlowGrotto(t, 13, new Vector3(-45f + 55f, s - 41f, -WallZ - 7f));
 
-            // Something enormous circling out in the dark.
-            Leviathan(t, 15, Station2 + new Vector3(0f, -12f, 0f));
-        }
-
-        static void Ledge(Transform t, Vector3 pos, float size)
-        {
-            var ledge = Primitive(PrimitiveType.Sphere, "Ledge", t, pos, new Vector3(size * 0.7f, 1.2f, size), rockWall, collider: true);
-            ledge.transform.localRotation = Quaternion.Euler(0f, 0f, 8f);
+            // Something enormous circling in the dark below the sub.
+            Leviathan(t, 15, new Vector3(0f, s - 90f, 0f));
         }
 
         static void CoralLedge(Transform t, int id, Vector3 pos)
@@ -168,7 +201,7 @@ namespace TheDeep.EditorTools
             var rng = new System.Random(id);
             for (int i = 0; i < 16; i++)
             {
-                var offset = new Vector3((float)rng.NextDouble() * 2f, 0f, (float)rng.NextDouble() * 3f - 1.5f);
+                var offset = new Vector3((float)rng.NextDouble() * 3f - 1.5f, 0f, (float)rng.NextDouble() * 3f - 1.5f);
                 float h = 0.4f + (float)rng.NextDouble() * 1.1f;
                 var branch = Cylinder("Branch", root, offset + Vector3.up * h * 0.5f, new Vector3(0.07f, h * 0.5f, 0.07f), coral);
                 branch.transform.localRotation = Quaternion.Euler((float)rng.NextDouble() * 50f - 25f, 0f, (float)rng.NextDouble() * 50f - 25f);
@@ -213,7 +246,7 @@ namespace TheDeep.EditorTools
         static Vector3 RandomDir(System.Random rng) =>
             new((float)rng.NextDouble() * 2f - 1f, (float)rng.NextDouble() * 2f - 1f, (float)rng.NextDouble() * 2f - 1f);
 
-        /// <summary>A ~35 m shape that circles the station at the edge of visibility, dotted with faint lights.</summary>
+        /// <summary>A ~35 m shape that circles the middle of the shaft below the sub, dotted with faint lights.</summary>
         static void Leviathan(Transform t, int id, Vector3 center)
         {
             var root = Group("UnknownLargeOrganism", t);
@@ -231,36 +264,30 @@ namespace TheDeep.EditorTools
                 Sphere("Photophore", root, new Vector3(side * 2.9f, -0.5f + (float)rng.NextDouble(), z), 0.35f, bioLight);
             }
             var drift = root.gameObject.AddComponent<Drifter>();
-            Assign(drift, "radius", 44f);
-            Assign(drift, "secondsPerLap", 240f);
-            Assign(drift, "bobHeight", 4f);
-            Assign(drift, "bobSeconds", 30f);
+            Assign(drift, "radius", 20f);
+            Assign(drift, "secondsPerLap", 150f);
+            Assign(drift, "bobHeight", 10f);
+            Assign(drift, "bobSeconds", 40f);
             MakeScannable(root.gameObject, id, "UNKNOWN LARGE ORGANISM", DataCategory.Creature, 300, 8f, 12f);
         }
 
-        // ------------------------------------------------------------------ zone 3: the abyssal plain
+        // ------------------------------------------------------------------ zone 3: the abyssal terrace
 
-        static void BuildAbyss(Transform t)
+        static void BuildTerrace(Transform t)
         {
-            Heightfield("S3_Floor", t, new Vector3(185f, AbyssFloorY, 0f), 170f, 124f, 3f, 3f, 0.03f, 11, deepSilt, (x, z) =>
-            {
-                float nearWall = Mathf.Max(0f, Mathf.Abs(z) - 45f);
-                return nearWall * nearWall * 0.05f;
-            });
-            var north = new Vector3(100f, AbyssFloorY - 8f, 62f);
-            CliffWall("S3_WallNorth", t, north, Vector3.right, Vector3.back, 170f, 120f, 3.5f, 4f, 12, rockWall,
-                new CaveMouth { U = 50f, V = 14f, Radius = 4.5f });
-            Tunnel("S3_Cave", t, WallPoint(north, Vector3.right, 50f, 14f), Vector3.forward, 4.5f, 30f, 13);
-            CliffWall("S3_WallSouth", t, new Vector3(100f, AbyssFloorY - 8f, -62f), Vector3.right, Vector3.forward, 170f, 120f, 3.5f, 4f, 14, rockWall);
+            // A huge shelf of rock sticking out of the west side of the shaft, 30 m under the station.
+            Heightfield("Terrace_Top", t, new Vector3(-22f, TerraceY, 0f), 32f, 62f, 2f, 1.2f, 0.06f, 11, deepSilt);
+            Slab("Terrace_Rock", t, new Vector3(-22f, TerraceY - 9f, 0f), new Vector3(38f, 14f, 68f));
 
-            float g = AbyssFloorY;
-            WhaleFall(t, 16, OnGround(168f, -16f, g));
-            ThermalVent(t, 17, OnGround(205f, 18f, g), "BLACK SMOKER FIELD", 140);
-            ThermalVent(t, 0, OnGround(213f, 26f, g));
-            ThermalVent(t, 0, OnGround(199f, 29f, g));
-            TubeWormForest(t, 18, OnGround(208f, 22f, g));
-            Isopod(t, 19, OnGround(160f, 10f, g, 0.2f), OnGround(172f, 22f, g, 0.2f));
-            CrystalVein(t, 20, new Vector3(150f, AbyssFloorY + 4f, 84f), 200f);
+            float g = TerraceY;
+            WhaleFall(t, 16, OnGround(-22f, -12f, g));
+            ThermalVent(t, 17, OnGround(-26f, 18f, g), "BLACK SMOKER FIELD", 140);
+            ThermalVent(t, 0, OnGround(-20f, 24f, g));
+            ThermalVent(t, 0, OnGround(-31f, 25f, g));
+            TubeWormForest(t, 18, OnGround(-24f, 21f, g));
+            Isopod(t, 19, OnGround(-14f, 6f, g, 0.2f), OnGround(-12f, -4f, g, 0.2f));
+            // Crystals in the north cave at terrace level.
+            CrystalVein(t, 20, new Vector3(45f - 62f, TerraceY + 5f, WallZ + 10f), 200f);
         }
 
         static void WhaleFall(Transform t, int id, Vector3 pos)
@@ -303,33 +330,25 @@ namespace TheDeep.EditorTools
             MakeScannable(root.gameObject, id, "TUBE WORM FOREST", DataCategory.Creature, 120, 4f, 4f);
         }
 
-        // ------------------------------------------------------------------ zone 4: the hadal trench
+        // ------------------------------------------------------------------ zone 4: the shaft floor
 
-        static void BuildTrench(Transform t)
+        static void BuildShaftFloor(Transform t)
         {
-            Heightfield("S4_Floor", t, new Vector3(265f, TrenchFloorY, 0f), 150f, 40f, 2f, 1.2f, 0.06f, 21, deepSilt, (x, z) =>
+            Heightfield("Shaft_Floor", t, new Vector3(0f, FloorY, 0f), 84f, 76f, 2f, 1.2f, 0.06f, 21, deepSilt, (x, z) =>
             {
-                float nearWall = Mathf.Max(0f, Mathf.Abs(z) - 12f);
-                return nearWall * nearWall * 0.3f;
+                // Rubble piled up against the walls.
+                float nearX = Mathf.Max(0f, Mathf.Abs(x) - 30f), nearZ = Mathf.Max(0f, Mathf.Abs(z) - 26f);
+                return (nearX * nearX + nearZ * nearZ) * 0.08f;
             });
-            var north = new Vector3(190f, TrenchFloorY - 6f, 18f);
-            CliffWall("S4_WallNorth", t, north, Vector3.right, Vector3.back, 150f, 170f, 3f, 3f, 22, rockWall,
-                new CaveMouth { U = 88f, V = 9f, Radius = 3.5f });
-            Tunnel("S4_Cave", t, WallPoint(north, Vector3.right, 88f, 9f), Vector3.forward, 3.5f, 26f, 23);
-            CliffWall("S4_WallSouth", t, new Vector3(190f, TrenchFloorY - 6f, -18f), Vector3.right, Vector3.forward, 150f, 170f, 3f, 3f, 24, rockWall);
-            CliffWall("S4_WallEnd", t, new Vector3(340f, TrenchFloorY - 6f, 20f), Vector3.back, Vector3.left, 40f, 170f, 3f, 3f, 25, rockWall);
-            CliffWall("S4_WallStart", t, new Vector3(190f, TrenchFloorY - 6f, -20f), Vector3.forward, Vector3.right, 40f, 170f, 3f, 3f, 26, rockWall);
 
-            float g = TrenchFloorY;
-            DivingBellWreck(t, 21, OnGround(248f, 5f, g));
-            StructureCluster(t, 22, OnGround(292f, 0f, g));
+            float g = FloorY;
+            DivingBellWreck(t, 21, OnGround(-12f, 8f, g));
+            StructureCluster(t, 22, OnGround(14f, -6f, g));
             // Dive Team 7. Their bodies (and camera chips) are added by the footage step.
-            lostDiverSpots = new[] { OnGround(242f, -7f, g), OnGround(257f, 9f, g), OnGround(276f, -5f, g), OnGround(300f, 7f, g) };
-            OldRope(t, OnGround(244f, 4f, g, 0.05f), 12, 71);
-            OldRope(t, OnGround(270f, -8f, g, 0.05f), 9, 72);
+            lostDiverSpots = new[] { OnGround(-18f, -4f, g), OnGround(-4f, 14f, g), OnGround(6f, -16f, g), OnGround(22f, 8f, g) };
+            OldRope(t, OnGround(-15f, 5f, g, 0.05f), 12, 71);
+            OldRope(t, OnGround(0f, -12f, g, 0.05f), 9, 72);
         }
-
-        static Vector3[] lostDiverSpots;
 
         static void DivingBellWreck(Transform t, int id, Vector3 pos)
         {
@@ -387,10 +406,10 @@ namespace TheDeep.EditorTools
             var list = so.FindProperty("stations");
             (string name, int level, float light, Color fog, float density)[] data =
             {
-                ("The Shelf", 0, 0.55f, new Color(0.01f, 0.035f, 0.045f), 0.045f),
-                ("The Wall", 1, 0.28f, new Color(0.006f, 0.022f, 0.032f), 0.042f),
-                ("Abyssal Plain", 2, 0.1f, new Color(0.004f, 0.012f, 0.02f), 0.05f),
-                ("Hadal Trench", 3, 0.02f, new Color(0.001f, 0.004f, 0.008f), 0.058f),
+                ("Upper Shaft", 0, 0.55f, new Color(0.01f, 0.035f, 0.045f), 0.04f),
+                ("The Wall", 1, 0.25f, new Color(0.006f, 0.022f, 0.032f), 0.04f),
+                ("Abyssal Terrace", 2, 0.09f, new Color(0.004f, 0.012f, 0.02f), 0.045f),
+                ("Shaft Floor", 3, 0.02f, new Color(0.001f, 0.004f, 0.008f), 0.05f),
             };
             list.arraySize = data.Length;
             for (int i = 0; i < data.Length; i++)

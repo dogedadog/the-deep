@@ -20,7 +20,7 @@ namespace TheDeep.Player
         [SerializeField] Light headlamp;
         [SerializeField] float swimAcceleration = 8f;
         [SerializeField] float boostAcceleration = 14f;
-        [SerializeField] float verticalAcceleration = 6.5f;
+        [SerializeField] float verticalAcceleration = 9f;
         [SerializeField, Tooltip("Slight negative buoyancy, m/s^2.")] float sinkAcceleration = 0.25f;
         [SerializeField] float lookSensitivity = 0.08f;
 

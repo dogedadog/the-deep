@@ -23,7 +23,7 @@ namespace TheDeep.Submarine
             public string name;
             public Transform point;
             [Tooltip("Suit depth-rating upgrade level needed to dive here.")] public int requiredDepthLevel;
-            [Tooltip("Faint light from above; almost none in the trench.")] public float downwelling = 0.5f;
+            [Tooltip("Faint light from above; almost none at the bottom of the shaft.")] public float downwelling = 0.5f;
             public Color fogColor = new(0.01f, 0.035f, 0.045f);
             public float fogDensity = 0.045f;
         }

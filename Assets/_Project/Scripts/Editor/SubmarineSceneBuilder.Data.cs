@@ -34,22 +34,21 @@ namespace TheDeep.EditorTools
             brine = Mat("POI_Brine", null, new Color(0.01f, 0.02f, 0.025f), smoothness: 1f, emission: new Color(0.0f, 0.05f, 0.06f));
         }
 
-        /// <summary>Station 1 (the shelf): the first things worth documenting, near the sub.</summary>
+        /// <summary>Station 1 (upper shaft): the first things worth documenting, on the ledges under the sub.</summary>
         static void BuildPointsOfInterest(Transform t)
         {
             InitPoiMaterials();
-            float floor = SeafloorY;
-            ThermalVent(t, 1, OnGround(14f, -8f, floor));
-            TubeWorms(t, 8, OnGround(15.8f, -6.4f, floor));
-            CrystalVein(t, 2, OnGround(-14f, 10f, floor), 20f);
-            CrystalVein(t, 3, OnGround(22f, 12f, floor), 140f);
-            CrystalVein(t, 4, OnGround(-30f, -6f, floor), 260f);
-            BrinePool(t, 5, OnGround(-8f, -18f, floor));
-            Jellyfish(t, 6, new Vector3(6f, -4.5f, 12f));
-            Isopod(t, 7, OnGround(-20f, -7f, floor, 0.2f), OnGround(-13f, -2f, floor, 0.2f));
-            Monolith(t, 9, OnGround(30f, -2f, floor));
+            ThermalVent(t, 1, OnLedge(0, -2f, -4f));
+            TubeWorms(t, 8, OnLedge(0, -0.2f, -2.4f));
+            CrystalVein(t, 4, OnLedge(0, 1f, 5f), 260f);
+            CrystalVein(t, 2, OnLedge(1, -6f, 0f), 20f);
+            Isopod(t, 7, OnLedge(1, -2f, -1f, 0.2f), OnLedge(1, 6f, 1f, 0.2f));
+            CrystalVein(t, 3, OnLedge(2, 2f, 5f), 140f);
+            Monolith(t, 9, OnLedge(2, 0f, -3f));
+            BrinePool(t, 5, OnLedge(3, -4f, -1f));
+            Jellyfish(t, 6, new Vector3(6f, -14f, 10f));
 
-            // The old dive helmet on the seabed is evidence about the missing team.
+            // The old dive helmet on the ledge is evidence about the missing team.
             var helmet = GameObject.Find("OldDiveHelmet");
             if (helmet != null) MakeScannable(helmet, 10, "PERSONAL EFFECTS: DIVE HELMET", DataCategory.Evidence, 110, 4f, 1.2f);
         }
