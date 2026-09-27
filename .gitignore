@@ -116,3 +116,5 @@ InitTestScene*.unity*
 # MCP / editor screenshots
 /[Aa]ssets/[Ss]creenshots/
 /[Aa]ssets/[Ss]creenshots.meta
+
+__pycache__/
