@@ -112,15 +112,35 @@ namespace TheDeep.Core
                 Key.RightShift => "R-SHIFT",
                 Key.LeftAlt => "L-ALT",
                 Key.Space => "SPACE",
-                _ => binding.Key.ToString().ToUpperInvariant(),
+                _ => KeyName(binding.Key),
             };
+        }
+
+        /// <summary>The key's name on the player's keyboard layout (Key values are US positions: AZERTY's Z is Key.W).</summary>
+        static string KeyName(Key key)
+        {
+            try
+            {
+                var control = Keyboard.current?[key];
+                if (control != null && !string.IsNullOrEmpty(control.displayName)) return control.displayName.ToUpperInvariant();
+            }
+            catch (Exception)
+            {
+                // Not a key this keyboard has: fall back to the enum name.
+            }
+            return key.ToString().ToUpperInvariant();
         }
 
         public static string Label(GameAction action) => Label(Get(action));
 
+        /// <summary>Binds <paramref name="action"/>; an action that already used that key or button takes this one's old binding.</summary>
         public static void Rebind(GameAction action, Binding binding)
         {
-            Bindings[(int)action] = binding;
+            var bindings = Bindings;
+            var old = bindings[(int)action];
+            foreach (var other in All)
+                if (other != action && bindings[(int)other].Equals(binding)) bindings[(int)other] = old;
+            bindings[(int)action] = binding;
             Save();
             Changed?.Invoke();
         }

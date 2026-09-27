@@ -20,8 +20,12 @@ namespace TheDeep.Core
 
         void OnDestroy() => GameSettings.Changed -= Apply;
 
+        // Settings edits only update PlayerPrefs in memory; make sure they reach the disk.
+        void OnApplicationQuit() => GameSettings.Flush();
+
         void Apply()
         {
+            // Only touches the resolution / window mode when those actually changed (not on every slider tick).
             GameSettings.ApplyDisplay();
             if (colorAdjustments != null)
             {

@@ -15,21 +15,24 @@ namespace TheDeep.Voice
         const int Capacity = VoiceCodec.SampleRate * 2;
         const int Prebuffer = 480;         // 60 ms before starting playback
         const int MaxLatency = 2400;       // drop audio beyond 300 ms of backlog
+        const int MaxKeyedGap = 2000;      // a keyed channel rides out up to 250 ms of late packets
 
         readonly float[] ring = new float[Capacity];
         readonly object gate = new();
         readonly System.Random rng = new();
         int readIndex, writeIndex, count;
-        bool playing;
-        int squelchTail, squelchHead, dropoutLeft;
+        bool playing, rebuffering;
+        int squelchTail, squelchHead, dropoutLeft, underrun;
 
         Mode mode;
         AudioSource source;
+        AudioClip clip;
 
         // Set on the main thread, read by the audio callback.
         volatile float gain = 1f;
         volatile float quality = 1f;
         volatile bool muffled;
+        volatile bool keyed;
 
         // Filter state (audio thread only).
         float hpPrevIn, hpPrevOut, lpOut, muffleOut;
@@ -42,14 +45,23 @@ namespace TheDeep.Voice
                 count = 0;
                 readIndex = writeIndex;
                 playing = false;
+                rebuffering = false;
+                underrun = 0;
             }
         }
+
+        /// <summary>
+        /// Main thread: the talker is still holding their radio key, so running out of audio is a late
+        /// packet, not the end of the over. The channel stays open (hiss, no squelch) for a moment.
+        /// Off by default, so footage playback closes the channel whenever its audio runs out.
+        /// </summary>
+        public void SetKeyed(bool isKeyed) => keyed = isKeyed;
 
         /// <param name="spatial">Proximity voices are 3D in the world; footage playback uses them flat (2D).</param>
         public void Init(Mode outputMode, bool spatial = true)
         {
             mode = outputMode;
-            var clip = AudioClip.Create($"Voice_{mode}", VoiceCodec.SampleRate, 1, VoiceCodec.SampleRate, true, OnRead);
+            clip = AudioClip.Create($"Voice_{mode}", VoiceCodec.SampleRate, 1, VoiceCodec.SampleRate, true, OnRead);
             source = gameObject.AddComponent<AudioSource>();
             source.clip = clip;
             source.loop = true;
@@ -60,6 +72,12 @@ namespace TheDeep.Voice
             source.maxDistance = 20f;
             source.dopplerLevel = 0f;
             source.Play();
+        }
+
+        void OnDestroy()
+        {
+            if (source != null) source.Stop();
+            if (clip != null) Destroy(clip);
         }
 
         /// <summary>Main thread: how this voice should sound right now.</summary>
@@ -93,7 +111,7 @@ namespace TheDeep.Voice
         void OnRead(float[] data)
         {
             float g = gain, q = quality;
-            bool underwater = muffled;
+            bool underwater = muffled, holdOpen = keyed;
             lock (gate)
             {
                 for (int i = 0; i < data.Length; i++)
@@ -106,21 +124,44 @@ namespace TheDeep.Voice
                     float voice = 0f;
                     if (playing)
                     {
-                        if (count > 0)
+                        // After a gap on a keyed channel, refill the jitter buffer before carrying on,
+                        // but never past the gap limit: then play what arrived (e.g. the over's last packet).
+                        bool waiting = rebuffering && holdOpen && count < Prebuffer && underrun < MaxKeyedGap;
+                        if (count > 0 && !waiting)
                         {
                             voice = ring[readIndex];
                             readIndex = (readIndex + 1) % Capacity;
                             count--;
+                            underrun = 0;
+                            rebuffering = false;
+                        }
+                        else if (holdOpen && underrun < MaxKeyedGap)
+                        {
+                            // A late packet mid-over: silence while the hiss carries on.
+                            underrun++;
+                            rebuffering = true;
                         }
                         else
                         {
+                            // Only reached with nothing buffered, so no audio is thrown away.
                             playing = false;
                             squelchTail = 900; // the channel closing
+                            underrun = 0;
+                            rebuffering = false;
                         }
                     }
-                    data[i] = (mode == Mode.Radio ? RadioChain(voice, q) : ProximityChain(voice, underwater)) * g;
+                    data[i] = Limit((mode == Mode.Radio ? RadioChain(voice, q) : ProximityChain(voice, underwater)) * g);
                 }
             }
+        }
+
+        /// <summary>Soft knee above 0.9, so loud voices at high volume don't hard-clip (audio thread, no Unity API).</summary>
+        static float Limit(float x)
+        {
+            float a = x < 0f ? -x : x;
+            if (a <= 0.9f) return x;
+            float limited = 0.9f + 0.1f * (float)System.Math.Tanh((a - 0.9f) / 0.1f);
+            return x < 0f ? -limited : limited;
         }
 
         float ProximityChain(float x, bool underwater)

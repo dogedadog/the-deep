@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Text;
 using TheDeep.Core;
 using TheDeep.Player;
 using Unity.Netcode;
@@ -22,6 +23,7 @@ namespace TheDeep.Voice
     ///  - proximity voice (voice-activated, M mutes): heard nearby, muffled underwater, never through the hull
     ///  - radio (hold the radio key): everyone hears it through their walkie-talkie, degraded by signal.
     /// Everyone else plays it back through two <see cref="VoiceOutput"/>s on this player's head.
+    /// A dead diver is never heard from their body, and keeps hearing the radio at full strength.
     /// </summary>
     public class PlayerVoice : NetworkBehaviour
     {
@@ -29,6 +31,9 @@ namespace TheDeep.Voice
         const int FramesPerPacket = 2;                          // send every 40 ms
         const float VoiceHoldSeconds = 0.45f;
         const byte FlagProximity = 1, FlagRadio = 2;
+        // Design decision pending: can the dead still talk on the radio? false makes them listen-only.
+        const bool DeadCanUseRadio = true;
+        const float CueVolume = 0.15f;
 
         [SerializeField] Transform head;
         [SerializeField] Renderer radioLight;
@@ -41,17 +46,25 @@ namespace TheDeep.Voice
         public static readonly List<RadioLogEntry> RadioLog = new();
         public static bool MicMuted { get; private set; }
 
-        /// <summary>Local player's own voice, as 20 ms frames of 8 kHz audio that were sent (for the helmet camera).</summary>
+        /// <summary>
+        /// Local player's own voice, as 20 ms frames of 8 kHz audio that were sent (for the helmet camera).
+        /// The array is reused for the next frame: handlers must copy what they need immediately.
+        /// </summary>
         public static event Action<float[]> LocalVoiceFrame;
-        /// <summary>Another player's voice arrived here: (speaker, samples, isRadio, sender signal).</summary>
+        /// <summary>
+        /// Another player's voice arrived here: (speaker, samples, isRadio, sender signal).
+        /// The samples array is reused for the next packet: handlers must copy what they need immediately.
+        /// </summary>
         public static event Action<PlayerVoice, float[], bool, float> RemoteVoiceHeard;
 
         PlayerNetwork net;
         DiverController diver;
+        DiverHealth health;
         VoiceOutput proximityOut, radioOut;
 
         // Remote-side state.
         float lastRadioHeard = -10f, radioStarted = -1f, heardSignal = 1f;
+        float[] decoded = Array.Empty<float>();
         public float ReceivedLevel { get; private set; }
 
         // Owner-side capture state.
@@ -60,9 +73,16 @@ namespace TheDeep.Voice
         int micRate, lastMicPos;
         float resamplePhase, micLevel, voiceHold, txStarted = -1f;
         readonly List<float> pending = new();
-        readonly List<byte> outgoing = new();
+        readonly float[] frame = new float[FrameSamples];
+        readonly byte[] outgoing = new byte[FrameSamples * FramesPerPacket];
+        int outgoingCount;
         float[] readBuffer = new float[4096];
         Text hud;
+        readonly StringBuilder hudText = new();
+
+        // Push-to-talk cues, heard only by the talker.
+        static AudioClip talkPermitClip, rogerClip;
+        AudioSource cueSource;
 
         public bool RadioTransmitting => radioTx.Value;
         public bool Talking => talking.Value;
@@ -71,10 +91,13 @@ namespace TheDeep.Voice
         /// <summary>This player's radio is live, as heard here (their packets are arriving).</summary>
         public bool RadioHeardRecently => IsOwner ? radioTx.Value : Time.time - lastRadioHeard < 0.35f;
 
+        bool Dead => health != null && health.IsDead;
+
         void Awake()
         {
             net = GetComponent<PlayerNetwork>();
             diver = GetComponent<DiverController>();
+            health = GetComponent<DiverHealth>();
         }
 
         public override void OnNetworkSpawn()
@@ -82,6 +105,8 @@ namespace TheDeep.Voice
             All.Add(this);
             if (IsOwner)
             {
+                // A new session: the last one's transmissions don't belong in this log.
+                RadioLog.Clear();
                 StartMicrophone();
                 GameSettings.Changed += OnSettingsChanged;
                 BuildHud();
@@ -119,7 +144,7 @@ namespace TheDeep.Voice
             if (bubbles != null)
             {
                 var emission = bubbles.emission;
-                emission.rateOverTime = talking.Value && IsDiving ? 18f : 0f;
+                emission.rateOverTime = talking.Value && IsDiving && !Dead ? 18f : 0f;
             }
 
             if (IsOwner) UpdateOwner();
@@ -142,34 +167,44 @@ namespace TheDeep.Voice
             var local = PlayerNetwork.Local;
             float volume = local == null ? 0f : GameSettings.VoiceVolume;
             bool listenerDiving = local != null && local.GetComponent<DiverController>().IsDiving;
+            // The dead spectate their body, which can be far behind the sub, but the radio stays clear.
+            bool listenerDead = local != null && local.TryGetComponent<DiverHealth>(out var listenerHealth) && listenerHealth.IsDead;
             // Proximity: only if you're both in the water or both in the sub.
             proximityOut.Configure(listenerDiving == IsDiving ? volume : 0f, 1f, IsDiving);
             // Radio: the worse of the two ends' signal.
-            float listenerSignal = listenerDiving ? SignalModel.Strength(local.transform.position) : 1f;
+            float listenerSignal = listenerDiving && !listenerDead ? SignalModel.Strength(local.transform.position) : 1f;
             radioOut.Configure(volume, Mathf.Min(heardSignal, listenerSignal), false);
+            // While they're keyed, a late packet is a gap in the over, not its end (no squelch mid-sentence).
+            radioOut.SetKeyed(radioTx.Value || Time.time - lastRadioHeard < 0.25f);
         }
 
         [Rpc(SendTo.NotMe, Delivery = RpcDelivery.Unreliable)]
         void VoiceRpc(byte[] encoded, byte flags, byte senderSignal)
         {
             if (proximityOut == null) return;
-            var samples = new float[encoded.Length];
+            // Never heard from a dead speaker's body (covers packets sent just before they died).
+            bool dead = Dead;
+            bool toProximity = (flags & FlagProximity) != 0 && !dead;
+            bool toRadio = (flags & FlagRadio) != 0 && (!dead || DeadCanUseRadio);
+            if (!toProximity && !toRadio) return;
+
+            if (decoded.Length != encoded.Length) decoded = new float[encoded.Length];
             float peak = 0f;
             for (int i = 0; i < encoded.Length; i++)
             {
-                samples[i] = VoiceCodec.Decode(encoded[i]);
-                peak = Mathf.Max(peak, Mathf.Abs(samples[i]));
+                decoded[i] = VoiceCodec.Decode(encoded[i]);
+                peak = Mathf.Max(peak, Mathf.Abs(decoded[i]));
             }
             ReceivedLevel = Mathf.Max(ReceivedLevel, Mathf.Clamp01(peak * 3f));
-            if ((flags & FlagProximity) != 0)
+            if (toProximity)
             {
-                proximityOut.Push(samples);
-                RemoteVoiceHeard?.Invoke(this, samples, false, 1f);
+                proximityOut.Push(decoded);
+                RemoteVoiceHeard?.Invoke(this, decoded, false, 1f);
             }
-            if ((flags & FlagRadio) != 0)
+            if (toRadio)
             {
-                radioOut.Push(samples);
-                RemoteVoiceHeard?.Invoke(this, samples, true, senderSignal / 255f);
+                radioOut.Push(decoded);
+                RemoteVoiceHeard?.Invoke(this, decoded, true, senderSignal / 255f);
                 heardSignal = senderSignal / 255f;
                 if (radioStarted < 0f) radioStarted = Time.time;
                 lastRadioHeard = Time.time;
@@ -180,20 +215,22 @@ namespace TheDeep.Voice
 
         void UpdateOwner()
         {
+            bool dead = Dead;
+            bool radioAllowed = !dead || DeadCanUseRadio;
             if (Controls.Pressed(GameAction.MuteMic)) MicMuted = !MicMuted;
-            bool radioHeld = Controls.Held(GameAction.Radio);
+            // Dev test (-testtone): a beeping 600 Hz tone over the radio instead of the microphone.
+            bool testTone = TestTone && radioAllowed;
+            bool radioHeld = radioAllowed && (testTone || Controls.Held(GameAction.Radio));
             if (radioTx.Value != radioHeld)
             {
                 radioTx.Value = radioHeld;
                 if (radioHeld) txStarted = Time.time;
                 else if (txStarted >= 0f) AddLog(CrewNumber, Time.time - txStarted, OwnSignal());
+                PlayCue(radioHeld ? talkPermitClip : rogerClip);
             }
 
-            if (TestTone)
+            if (testTone)
             {
-                // Dev test (-testtone): a beeping 600 Hz tone over the radio instead of the microphone.
-                radioHeld = true;
-                if (!radioTx.Value) radioTx.Value = true;
                 int needed = Mathf.RoundToInt(Time.deltaTime * VoiceCodec.SampleRate);
                 for (int i = 0; i < needed; i++)
                 {
@@ -204,7 +241,6 @@ namespace TheDeep.Voice
             }
             else ReadMicrophone();
             float threshold = Mathf.Lerp(0.08f, 0.006f, GameSettings.MicSensitivity);
-            var frame = new float[FrameSamples];
             bool anyVoice = false;
             while (pending.Count >= FrameSamples)
             {
@@ -216,35 +252,38 @@ namespace TheDeep.Voice
                 micLevel = Mathf.Max(rms * 6f, micLevel * 0.9f);
                 if (rms > threshold) voiceHold = VoiceHoldSeconds;
 
-                bool proximity = !MicMuted && voiceHold > 0f;
+                bool proximity = !MicMuted && voiceHold > 0f && !dead;
                 bool radio = radioHeld; // push-to-talk works even when muted
-                if (!proximity && !radio) { outgoing.Clear(); continue; }
+                if (!proximity && !radio) { outgoingCount = 0; continue; }
                 anyVoice = true;
-                LocalVoiceFrame?.Invoke((float[])frame.Clone());
+                LocalVoiceFrame?.Invoke(frame);
 
-                foreach (float s in frame) outgoing.Add(VoiceCodec.Encode(Mathf.Clamp(s * 1.4f, -1f, 1f)));
-                if (outgoing.Count >= FrameSamples * FramesPerPacket)
+                for (int i = 0; i < FrameSamples; i++) outgoing[outgoingCount++] = VoiceCodec.Encode(Mathf.Clamp(frame[i] * 1.4f, -1f, 1f));
+                if (outgoingCount >= outgoing.Length)
                 {
-                    byte flags = (byte)((proximity || radio ? FlagProximity : 0) | (radio ? FlagRadio : 0));
-                    VoiceRpc(outgoing.ToArray(), flags, (byte)(OwnSignal() * 255f));
-                    outgoing.Clear();
+                    // Radio is also heard next to a living talker, but never from a dead one's body.
+                    byte flags = (byte)((proximity || (radio && !dead) ? FlagProximity : 0) | (radio ? FlagRadio : 0));
+                    // The RPC serialises the array during the call, so reusing it is safe.
+                    VoiceRpc(outgoing, flags, (byte)(OwnSignal() * 255f));
+                    outgoingCount = 0;
                 }
             }
             voiceHold -= Time.deltaTime;
             micLevel = Mathf.MoveTowards(micLevel, 0f, Time.deltaTime);
-            bool nowTalking = anyVoice || voiceHold > 0f && !MicMuted;
+            bool nowTalking = !dead && (anyVoice || voiceHold > 0f && !MicMuted);
             if (talking.Value != nowTalking) talking.Value = nowTalking;
-            UpdateHud(radioHeld);
+            UpdateHud(radioHeld, dead);
         }
 
-        float OwnSignal() => IsDiving ? SignalModel.Strength(transform.position) : 1f;
+        // The dead transmit clear, like they listen: their body can be far behind the sub.
+        float OwnSignal() => IsDiving && !Dead ? SignalModel.Strength(transform.position) : 1f;
 
         void OnSettingsChanged()
         {
             if (GameSettings.MicDeviceName != micDevice) StartMicrophone();
         }
 
-        static bool TestTone => Array.IndexOf(Environment.GetCommandLineArgs(), "-testtone") >= 0;
+        static readonly bool TestTone = Array.IndexOf(Environment.GetCommandLineArgs(), "-testtone") >= 0;
         int toneSample;
 
         void StartMicrophone()
@@ -317,6 +356,35 @@ namespace TheDeep.Voice
             if (RadioLog.Count > 40) RadioLog.RemoveAt(0);
         }
 
+        // ------------------------------------------------------------------ push-to-talk cues
+
+        void PlayCue(AudioClip cue)
+        {
+            if (cueSource != null && cue != null) cueSource.PlayOneShot(cue, CueVolume * GameSettings.EffectsVolume);
+        }
+
+        /// <summary>A short square-wave beep (optionally two tones), softened and faded so it doesn't click.</summary>
+        static AudioClip MakeBeep(string name, float firstHz, float firstSeconds, float secondHz, float secondSeconds)
+        {
+            const int Rate = 22050;
+            int firstCount = Mathf.RoundToInt(firstSeconds * Rate);
+            var data = new float[firstCount + Mathf.RoundToInt(secondSeconds * Rate)];
+            int fade = Rate / 500; // 2 ms
+            float phase = 0f, smooth = 0f;
+            for (int i = 0; i < data.Length; i++)
+            {
+                phase += (i < firstCount ? firstHz : secondHz) / Rate;
+                if (phase >= 1f) phase -= 1f;
+                float square = phase < 0.5f ? 1f : -1f;
+                smooth += 0.45f * (square - smooth); // takes the harsh edge off, like a small speaker
+                float envelope = Mathf.Clamp01(Mathf.Min(i, data.Length - 1 - i) / (float)fade);
+                data[i] = smooth * envelope * 0.8f;
+            }
+            var clip = AudioClip.Create(name, data.Length, 1, Rate, false);
+            clip.SetData(data, 0);
+            return clip;
+        }
+
         // ------------------------------------------------------------------ HUD
 
         void BuildHud()
@@ -330,6 +398,13 @@ namespace TheDeep.Voice
             scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
             scaler.referenceResolution = new Vector2(1600, 900);
             scaler.matchWidthOrHeight = 1f;
+
+            // Talk-permit chirp on key-down, roger beep on key-up: local only, never sent to anyone.
+            if (talkPermitClip == null) talkPermitClip = MakeBeep("RadioTalkPermit", 1000f, 0.04f, 1500f, 0.04f);
+            if (rogerClip == null) rogerClip = MakeBeep("RadioRoger", 1200f, 0.06f, 0f, 0f);
+            cueSource = canvasGo.AddComponent<AudioSource>();
+            cueSource.playOnAwake = false;
+            cueSource.spatialBlend = 0f;
 
             var go = new GameObject("Readout", typeof(RectTransform), typeof(Text), typeof(Shadow));
             go.transform.SetParent(canvasGo.transform, false);
@@ -346,10 +421,10 @@ namespace TheDeep.Voice
             hud.raycastTarget = false;
         }
 
-        void UpdateHud(bool radioHeld)
+        void UpdateHud(bool radioHeld, bool dead)
         {
             if (hud == null) return;
-            var sb = new System.Text.StringBuilder();
+            var sb = hudText.Clear();
             foreach (var other in All)
             {
                 if (other == this || !other.RadioHeardRecently) continue;
@@ -357,10 +432,11 @@ namespace TheDeep.Voice
             }
             if (radioHeld)
                 sb.Append($"<color=#ff5040>● RADIO TX</color>   SIG {SignalModel.Bars(OwnSignal())} {OwnSignal() * 100f:0}%\n");
-            else
+            else if (!dead || DeadCanUseRadio)
                 sb.Append($"<size=15>RADIO: hold {Controls.Label(GameAction.Radio)}</size>\n");
 
-            if (micClip == null) sb.Append("<color=#ff8060>NO MICROPHONE</color>");
+            if (dead) sb.Append(DeadCanUseRadio ? "<color=#ff8060>NO VITALS - RADIO ONLY</color>" : "<color=#ff8060>NO VITALS - LISTENING ONLY</color>");
+            else if (micClip == null) sb.Append("<color=#ff8060>NO MICROPHONE</color>");
             else if (MicMuted) sb.Append($"<color=#ff8060>MIC MUTED</color> <size=15>({Controls.Label(GameAction.MuteMic)})</size>");
             else
             {

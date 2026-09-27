@@ -1,6 +1,7 @@
-using System.Linq;
+using System.Collections.Generic;
 using System.Text;
 using TheDeep.Core;
+using TheDeep.Player;
 using TheDeep.Voice;
 using UnityEngine;
 using UnityEngine.UI;
@@ -15,11 +16,17 @@ namespace TheDeep.UI.Terminal.Apps
     {
         const int MaxCrew = 5;
         const float RowHeight = 40f;
+        const int LogLines = 6;
+
+        static readonly System.Comparison<PlayerVoice> ByCrewNumber = (a, b) => a.CrewNumber.CompareTo(b.CrewNumber);
 
         readonly Image[] txLights = new Image[MaxCrew];
         readonly Image[] meters = new Image[MaxCrew];
         readonly Text[] rows = new Text[MaxCrew];
         readonly GameObject[] rowRoots = new GameObject[MaxCrew];
+        // The crew in crew-number order, rebuilt only when someone joins or leaves.
+        readonly List<PlayerVoice> crew = new();
+        readonly List<DiverHealth> crewHealth = new();
         Text log, footer;
         bool open;
 
@@ -69,9 +76,21 @@ namespace TheDeep.UI.Terminal.Apps
             if (open) Refresh();
         }
 
+        void RefreshCrewList()
+        {
+            bool stale = crew.Count != PlayerVoice.All.Count;
+            for (int i = 0; i < crew.Count && !stale; i++) stale = crew[i] == null || !crew[i].IsSpawned;
+            if (!stale) return;
+            crew.Clear();
+            crew.AddRange(PlayerVoice.All);
+            crew.Sort(ByCrewNumber);
+            crewHealth.Clear();
+            foreach (var v in crew) crewHealth.Add(v.GetComponent<DiverHealth>());
+        }
+
         void Refresh()
         {
-            var crew = PlayerVoice.All.OrderBy(v => v.CrewNumber).ToList();
+            RefreshCrewList();
             float meterWidth = 140f;
             for (int i = 0; i < MaxCrew; i++)
             {
@@ -80,9 +99,12 @@ namespace TheDeep.UI.Terminal.Apps
                 if (!show) continue;
                 var v = crew[i];
                 bool live = v.RadioHeardRecently;
-                float signal = v.IsDiving ? SignalModel.Strength(v.transform.position) : 1f;
+                bool dead = crewHealth[i] != null && crewHealth[i].IsDead;
+                // Matches PlayerVoice: a dead diver's radio isn't tied to where their body lies.
+                float signal = v.IsDiving && !dead ? SignalModel.Strength(v.transform.position) : 1f;
                 string where = v.IsDiving ? $"DIVING  {WorldInfo.DepthAt(v.transform.position.y):0} M" : "ABOARD";
-                rows[i].text = $"D{v.CrewNumber}{(v.IsOwner ? " (YOU)" : "")}   {where,-16}  SIG {SignalModel.Bars(signal)}  {(live ? "TRANSMITTING" : v.Talking ? "talking" : "")}";
+                string place = dead ? $"<color=#ff4030>{"NO VITALS",-16}</color>" : $"{where,-16}";
+                rows[i].text = $"D{v.CrewNumber}{(v.IsOwner ? " (YOU)" : "")}   {place}  SIG {SignalModel.Bars(signal)}  {(live ? "TRANSMITTING" : v.Talking ? "talking" : "")}";
                 rows[i].color = live ? new Color(1f, 0.55f, 0.45f) : RetroUI.Phosphor;
                 txLights[i].color = live ? new Color(1f, 0.15f, 0.1f) : new Color(0.25f, 0.05f, 0.04f);
                 float level = v.IsOwner ? (live ? 0.7f : 0f) : v.ReceivedLevel;
@@ -93,7 +115,7 @@ namespace TheDeep.UI.Terminal.Apps
             if (Time.frameCount % 15 != 0) return;
             var sb = new StringBuilder();
             if (PlayerVoice.RadioLog.Count == 0) sb.Append("(channel quiet)");
-            for (int i = PlayerVoice.RadioLog.Count - 1, shown = 0; i >= 0 && shown < 7; i--, shown++)
+            for (int i = PlayerVoice.RadioLog.Count - 1, shown = 0; i >= 0 && shown < LogLines; i--, shown++)
             {
                 var e = PlayerVoice.RadioLog[i];
                 sb.Append($"{e.Time}   D{e.Crew}   {e.Seconds:0.0}s   SIG {e.Signal * 100f:0}%{(e.Signal < SignalModel.CorruptionThreshold ? "  (BROKEN UP)" : "")}\n");

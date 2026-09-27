@@ -8,13 +8,14 @@ namespace TheDeep.UI
 {
     /// <summary>
     /// Settings screen (controls, display, audio) in the same chunky style as the terminal.
-    /// Opened from the title menu and the pause menu; every change applies and saves immediately.
+    /// Opened from the title menu and the pause menu; every change applies immediately and is
+    /// written to disk when the menu closes.
     /// </summary>
     public class SettingsMenu : MonoBehaviour
     {
         const float RowHeight = 40f;
         const float Width = 640f;
-        const float Height = 820f;
+        const float Height = 860f;
         const float PageTop = 90f;
 
         readonly System.Collections.Generic.List<Action> refreshers = new();
@@ -23,6 +24,10 @@ namespace TheDeep.UI
         Button generalTab, controlsTab;
         Action onClose;
         GameAction? capturing;
+        // LEFT MOUSE was just bound by clicking the waiting button: that click's release (its onClick)
+        // must not re-arm the row. Cleared by the next press, so a release elsewhere can't eat a later click.
+        bool swallowClick;
+        int boundFrame = -1;
 
         public bool IsOpen => panel != null && panel.activeSelf;
         /// <summary>True while waiting for a key to bind (Esc then cancels the rebind, not the menu).</summary>
@@ -82,14 +87,25 @@ namespace TheDeep.UI
                 RetroUI.Place(label.rectTransform, 30, y, 300, 32);
                 var button = RetroUI.Button("Bind", b, "", () =>
                 {
+                    if (swallowClick)
+                    {
+                        swallowClick = false;
+                        return;
+                    }
                     capturing = action;
                     RefreshAll();
                 }, 15);
                 RetroUI.Place(button.GetComponent<RectTransform>(), 340, y, 260, 32);
-                bindButtons[action] = (button, button.GetComponentInChildren<Text>());
+                var buttonText = button.GetComponentInChildren<Text>();
+                // The long "press a key" prompt shrinks to fit; key names stay full size.
+                buttonText.verticalOverflow = VerticalWrapMode.Truncate; // best fit needs a bounded box
+                buttonText.resizeTextForBestFit = true;
+                buttonText.resizeTextMinSize = 9;
+                buttonText.resizeTextMaxSize = 15;
+                bindButtons[action] = (button, buttonText);
                 y += 35;
             }
-            var hint = RetroUI.Label("Hint", b, "Esc is always pause / back.  Red = the same key is used twice.", 13, RetroUI.Shadow);
+            var hint = RetroUI.Label("Hint", b, "Esc is always pause / back.  Choosing a key that is already used swaps the two.", 13, RetroUI.Shadow);
             RetroUI.Place(hint.rectTransform, 30, y + 4, Width - 60, 20);
             var reset = RetroUI.Button("ResetKeys", b, "RESET KEYS", () =>
             {
@@ -106,7 +122,7 @@ namespace TheDeep.UI
                     bool clash = false;
                     foreach (var other in Controls.All)
                         if (other != action && Controls.Get(other).Equals(Controls.Get(action))) clash = true;
-                    text.text = waiting ? "PRESS A KEY...  (ESC CANCELS)" : Controls.Label(action);
+                    text.text = waiting ? "PRESS A KEY  (CLICK HERE = LEFT MOUSE, ESC CANCELS)" : Controls.Label(action);
                     text.color = clash && !waiting ? new Color(0.8f, 0.1f, 0.05f) : RetroUI.Ink;
                     button.targetGraphic.color = waiting ? new Color(1f, 0.9f, 0.55f) : RetroUI.Face;
                 }
@@ -115,6 +131,10 @@ namespace TheDeep.UI
 
         void Update()
         {
+            var mouse = UnityEngine.InputSystem.Mouse.current;
+            // A new click started, so the binding click is over (released, maybe off the button).
+            if (swallowClick && mouse != null && mouse.leftButton.wasPressedThisFrame && Time.frameCount != boundFrame)
+                swallowClick = false;
             if (!capturing.HasValue) return;
             var keyboard = UnityEngine.InputSystem.Keyboard.current;
             if (keyboard != null && keyboard.escapeKey.wasPressedThisFrame)
@@ -124,8 +144,25 @@ namespace TheDeep.UI
                 RefreshAll();
                 return;
             }
+            // Clicking anywhere but the waiting button cancels (it used to bind LEFT MOUSE).
+            if (mouse != null && mouse.leftButton.wasPressedThisFrame)
+            {
+                var rt = (RectTransform)bindButtons[capturing.Value].button.transform;
+                // The menu canvas is Screen Space Overlay, so no camera.
+                if (!RectTransformUtility.RectangleContainsScreenPoint(rt, mouse.position.ReadValue(), null))
+                {
+                    capturing = null;
+                    RefreshAll();
+                    return;
+                }
+            }
             if (Controls.TryCapture(out var binding))
             {
+                if (binding.Mouse == 0)
+                {
+                    swallowClick = true;
+                    boundFrame = Time.frameCount;
+                }
                 Controls.Rebind(capturing.Value, binding);
                 capturing = null;
                 RefreshAll();
@@ -150,6 +187,7 @@ namespace TheDeep.UI
 
             y = Section(b, "AUDIO", y + 6);
             y = SliderRow(b, "Master volume", y, 0f, 1f, () => GameSettings.MasterVolume, v => GameSettings.MasterVolume = v, v => $"{v * 100f:0}%");
+            y = SliderRow(b, "Effects volume", y, 0f, 1f, () => GameSettings.EffectsVolume, v => GameSettings.EffectsVolume = v, v => $"{v * 100f:0}%");
             y = SliderRow(b, "Voice chat volume", y, 0f, 2f, () => GameSettings.VoiceVolume, v => GameSettings.VoiceVolume = v, v => $"{v * 100f:0}%");
             y = CycleRow(b, "Microphone", y, () => GameSettings.MicDeviceLabel, d => GameSettings.MicDevice += d);
             y = SliderRow(b, "Mic sensitivity", y, 0f, 1f, () => GameSettings.MicSensitivity, v => GameSettings.MicSensitivity = v, v => $"{v * 100f:0}%");
@@ -177,6 +215,7 @@ namespace TheDeep.UI
         public void Close()
         {
             capturing = null;
+            GameSettings.Flush();
             panel.SetActive(false);
             onClose?.Invoke();
             onClose = null;
