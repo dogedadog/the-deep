@@ -1,9 +1,11 @@
+using System.Threading.Tasks;
 using TheDeep.Core;
 using TheDeep.Data;
 using TheDeep.Player;
 using TheDeep.Progression;
 using TheDeep.UI;
 using TheDeep.UI.Terminal;
+using TheDeep.Voice;
 using Unity.Netcode;
 using UnityEngine;
 using UnityEngine.InputSystem;
@@ -13,7 +15,7 @@ namespace TheDeep.Networking
 {
     /// <summary>
     /// Title/connect screen shown over the orbiting sub camera, a small session readout while
-    /// playing, and an Esc pause panel (resume / leave).
+    /// playing, and an Esc pause panel (resume / settings / leave).
     /// </summary>
     public class ConnectionMenu : MonoBehaviour
     {
@@ -25,19 +27,34 @@ namespace TheDeep.Networking
         Text banner;
         float bannerUntil;
         InputField codeField, addressField;
-        Text statusText, sessionText, pauseInfo;
+        Text statusText, sessionText, pauseInfo, copyCodeLabel, leaveLabel;
+        Button hostOnlineButton, joinOnlineButton, hostLocalButton, joinLocalButton, copyCodeButton;
         bool paused;
+        /// <summary>Our own connection was accepted; until then the menu stays up with a CONNECTING status.</summary>
+        bool everConnected;
+        string connectingTo = "";
+        bool joiningOnline;
+        float leaveConfirmUntil, copiedUntil;
 
         SessionManager Sessions => SessionManager.Instance;
         static bool Connected => NetworkManager.Singleton != null && NetworkManager.Singleton.IsListening;
+        /// <summary>Connected and in the game, not still connecting.</summary>
+        bool InGame => Connected && everConnected;
+        /// <summary>HOST and JOIN only work from the title screen with nothing in progress.</summary>
+        bool CanStart => !Connected && !Sessions.IsBusy && !Sessions.IsLeaving;
 
         void Start()
         {
             BuildUI();
             Sessions.StatusChanged += message => statusText.text = message;
-            NetworkManager.Singleton.OnClientStarted += OnConnected;
             NetworkManager.Singleton.OnClientStopped += OnDisconnected;
-            NetworkManager.Singleton.OnClientConnectedCallback += _ => RefreshSessionText();
+            // Hide the menu once our own connection is accepted (NGO also raises this for the host's own id),
+            // not when the client merely starts: a wrong address would give a long black screen.
+            NetworkManager.Singleton.OnClientConnectedCallback += id =>
+            {
+                RefreshSessionText();
+                if (id == NetworkManager.Singleton.LocalClientId) OnConnected();
+            };
             NetworkManager.Singleton.OnClientDisconnectCallback += _ => RefreshSessionText();
             ExpeditionState.Announced += ShowBanner;
             ShowMenu(true);
@@ -67,6 +84,20 @@ namespace TheDeep.Networking
                 () => menuPanel.SetActive(true));
         }
 
+        void JoinLocal(string address)
+        {
+            connectingTo = string.IsNullOrWhiteSpace(address) ? "127.0.0.1" : address.Trim();
+            joiningOnline = false;
+            Sessions.JoinLocal(address);
+        }
+
+        async Task JoinOnline(string code)
+        {
+            connectingTo = "SESSION " + SessionManager.CleanJoinCode(code);
+            joiningOnline = true;
+            await Sessions.JoinOnline(code);
+        }
+
         /// <summary>
         /// Testing shortcuts to skip the menu: -autohost / -autojoin [address] (local),
         /// -autohostonline / -joincode CODE (online).
@@ -78,14 +109,17 @@ namespace TheDeep.Networking
             for (int i = 0; i < args.Length; i++)
             {
                 if (args[i] == "-autohost") Sessions.HostLocal();
-                if (args[i] == "-autojoin") Sessions.JoinLocal(Next(i) ?? "127.0.0.1");
+                if (args[i] == "-autojoin") JoinLocal(Next(i) ?? "127.0.0.1");
                 if (args[i] == "-autohostonline") await Sessions.HostOnline();
-                if (args[i] == "-joincode" && Next(i) != null) await Sessions.JoinOnline(Next(i));
+                if (args[i] == "-joincode" && Next(i) != null) await JoinOnline(Next(i));
             }
         }
 
         void OnConnected()
         {
+            everConnected = true;
+            // SETTINGS may have been opened while connecting: don't leave it over the game with the cursor captured.
+            if (settings.IsOpen) settings.Close();
             ShowMenu(false);
             RefreshSessionText();
         }
@@ -94,7 +128,24 @@ namespace TheDeep.Networking
         {
             SetPaused(false);
             ShowMenu(true);
-            if (!Sessions.IsBusy) statusText.text = "Disconnected.";
+            string message = DisconnectMessage(wasHost);
+            everConnected = false;
+            if (!Sessions.IsBusy) statusText.text = message;
+        }
+
+        string DisconnectMessage(bool wasHost)
+        {
+            if (wasHost) return "Session closed.";
+            if (Sessions.LeftOnPurpose) return everConnected ? "Left the session." : "Connection cancelled.";
+            if (!everConnected)
+                return joiningOnline
+                    ? $"Could not connect to {connectingTo}. The host may have left."
+                    : $"Could not reach a host at {connectingTo}. Check the IP and that the host is running.";
+            // Without a reason from the host this is a technical "[Disconnect Event]..." string.
+            string reason = NetworkManager.Singleton.DisconnectReason;
+            if (!string.IsNullOrEmpty(reason) && !reason.StartsWith("[Disconnect Event]"))
+                return reason.Contains("shutting down") ? "The host ended the session." : reason;
+            return "Lost connection to the host (the host may have left).";
         }
 
         void ShowMenu(bool show)
@@ -108,22 +159,37 @@ namespace TheDeep.Networking
         void Update()
         {
             var keyboard = Keyboard.current;
+            bool esc = keyboard != null && keyboard.escapeKey.wasPressedThisFrame;
             banner.gameObject.SetActive(Time.time < bannerUntil);
             if (settings.IsOpen)
             {
-                if (keyboard != null && keyboard.escapeKey.wasPressedThisFrame && !settings.IsCapturing) settings.Close();
+                if (esc && !settings.IsCapturing) settings.Close();
                 return;
             }
             if (saveSlots.IsOpen)
             {
-                if (keyboard != null && keyboard.escapeKey.wasPressedThisFrame) { saveSlots.Close(); menuPanel.SetActive(true); }
+                if (esc) { saveSlots.Close(); menuPanel.SetActive(true); }
+                return;
+            }
+
+            bool canStart = CanStart;
+            hostOnlineButton.interactable = joinOnlineButton.interactable = canStart;
+            hostLocalButton.interactable = joinLocalButton.interactable = canStart;
+            if (Connected && !everConnected)
+            {
+                statusText.text = $"CONNECTING TO {connectingTo}...   (ESC TO CANCEL)";
+                if (esc) Sessions.Leave();
                 return;
             }
             if (!Connected) return;
+
             var player = PlayerNetwork.Local;
-            // Esc pauses, unless it's being used to leave the terminal (which locks input first).
-            if (keyboard != null && keyboard.escapeKey.wasPressedThisFrame && player != null && (paused || !player.Controller.InputLocked))
+            // Keep the corner readout off the screen while you're outside the sub.
+            sessionText.enabled = !IsDiving(player);
+            // Esc pauses (also while dead or in the F2 view), unless it's being used to leave the terminal.
+            if (esc && player != null && !Sessions.IsLeaving && (paused || !player.Controller.Has(FirstPersonController.Lock.Terminal)))
                 SetPaused(!paused);
+            if (paused) UpdatePausePanel();
             if (Time.frameCount % 30 == 0) RefreshSessionText();
         }
 
@@ -132,9 +198,82 @@ namespace TheDeep.Networking
             paused = on;
             pausePanel.SetActive(on);
             var player = PlayerNetwork.Local;
-            if (player != null) player.Controller.InputLocked = on;
-            FirstPersonController.SetCursorLocked(!on && Connected);
-            if (on) pauseInfo.text = SessionDescription() + "\n\nShare the join code with friends so they can join.";
+            if (player != null) player.Controller.SetLock(FirstPersonController.Lock.Pause, on);
+            FirstPersonController.SetCursorLocked(!on && Connected && (player == null || !player.Controller.Has(FirstPersonController.Lock.Terminal)));
+            copiedUntil = 0f;
+            copyCodeButton.gameObject.SetActive(Sessions.IsOnline);
+            ResetLeaveButton();
+        }
+
+        void UpdatePausePanel()
+        {
+            copyCodeButton.gameObject.SetActive(Sessions.IsOnline);
+            copyCodeLabel.text = Time.unscaledTime < copiedUntil ? "COPIED!" : "COPY CODE";
+            if (leaveConfirmUntil > 0f)
+            {
+                if (Time.unscaledTime >= leaveConfirmUntil) ResetLeaveButton();
+            }
+            else if (Time.frameCount % 30 == 0) RefreshPauseInfo();
+        }
+
+        void RefreshPauseInfo()
+        {
+            string info = SessionDescription();
+            if (Sessions.IsOnline) info += "\n\nShare the join code with friends so they can join.";
+            var player = PlayerNetwork.Local;
+            var health = player != null ? player.GetComponent<DiverHealth>() : null;
+            if (IsDiving(player) && (health == null || !health.IsDead))
+                info += "\n\n<color=#FFB84D>THE DIVE KEEPS GOING WHILE PAUSED - AIR STILL DRAINS.</color>";
+            pauseInfo.text = info;
+        }
+
+        /// <summary>Back to the plain LEAVE button (END SESSION for the host), no confirm pending.</summary>
+        void ResetLeaveButton()
+        {
+            leaveConfirmUntil = 0f;
+            bool host = NetworkManager.Singleton != null && NetworkManager.Singleton.IsServer;
+            leaveLabel.text = host ? "END SESSION" : "LEAVE";
+            leaveLabel.fontSize = host ? 16 : 18;
+            leaveLabel.color = RetroUI.Ink;
+            RefreshPauseInfo();
+        }
+
+        void OnLeaveClicked()
+        {
+            var nm = NetworkManager.Singleton;
+            int crew = nm != null && nm.IsServer ? nm.ConnectedClientsIds.Count - 1 : 0;
+            // The host leaving ends the game for everyone, so that takes a second click.
+            if (crew > 0 && leaveConfirmUntil == 0f)
+            {
+                leaveConfirmUntil = Time.unscaledTime + 5f;
+                leaveLabel.text = "SURE?";
+                leaveLabel.color = new Color(0.6f, 0.05f, 0.05f);
+                pauseInfo.text = $"LEAVING ENDS THE SESSION FOR {crew} CREW. CLICK AGAIN.";
+                return;
+            }
+            leaveConfirmUntil = 0f;
+            pausePanel.SetActive(false);
+            Sessions.Leave();
+        }
+
+        void CopyJoinCode()
+        {
+            if (!Sessions.IsOnline) return;
+            GUIUtility.systemCopyBuffer = Sessions.JoinCode;
+            copiedUntil = Time.unscaledTime + 2f;
+        }
+
+        static bool IsDiving(PlayerNetwork player)
+        {
+            if (player == null) return false;
+            var diver = player.GetComponent<DiverController>();
+            return diver != null && diver.IsDiving;
+        }
+
+        static bool EnterPressed()
+        {
+            var keyboard = Keyboard.current;
+            return keyboard != null && (keyboard.enterKey.wasPressedThisFrame || keyboard.numpadEnterKey.wasPressedThisFrame);
         }
 
         void RefreshSessionText() => sessionText.text = SessionDescription();
@@ -143,7 +282,8 @@ namespace TheDeep.Networking
         {
             if (!Connected) return "";
             string where = Sessions.IsOnline ? $"JOIN CODE  {Sessions.JoinCode}" : "LOCAL SESSION";
-            int count = NetworkManager.Singleton.IsServer ? NetworkManager.Singleton.ConnectedClientsIds.Count : -1;
+            // Every machine keeps the voice list (the host included), so clients see the crew count too.
+            int count = PlayerVoice.All.Count;
             string expedition = CrewProgress.Instance != null && CrewProgress.Instance.IsSpawned ? $"EXPEDITION #{CrewProgress.Instance.Expedition}   |   " : "";
             return expedition + (count > 0 ? $"{where}   |   CREW {count}/{SessionManager.MaxPlayers}" : where);
         }
@@ -201,14 +341,18 @@ namespace TheDeep.Networking
 
             var b = box.transform;
             Section(b, "ONLINE  (friends join with a code)", 52);
-            Place(RetroUI.Button("HostOnline", b, "HOST", () => ChooseSlotThenHost(online: true), 20), 20, 80, 160, 46);
+            hostOnlineButton = Place(RetroUI.Button("HostOnline", b, "HOST", () => { if (CanStart) ChooseSlotThenHost(online: true); }, 20), 20, 80, 160, 46);
             codeField = Field(b, "JOIN CODE", 200, 80, 190, 46);
-            Place(RetroUI.Button("JoinOnline", b, "JOIN", async () => await Sessions.JoinOnline(codeField.text), 20), 400, 80, 140, 46);
+            joinOnlineButton = Place(RetroUI.Button("JoinOnline", b, "JOIN", async () => { if (CanStart) await JoinOnline(codeField.text); }, 20), 400, 80, 140, 46);
 
             Section(b, "LOCAL  (testing on this PC / LAN, no account needed)", 150);
-            Place(RetroUI.Button("HostLocal", b, "HOST", () => ChooseSlotThenHost(online: false), 20), 20, 178, 160, 46);
+            hostLocalButton = Place(RetroUI.Button("HostLocal", b, "HOST", () => { if (CanStart) ChooseSlotThenHost(online: false); }, 20), 20, 178, 160, 46);
             addressField = Field(b, "127.0.0.1", 200, 178, 190, 46);
-            Place(RetroUI.Button("JoinLocal", b, "JOIN", () => Sessions.JoinLocal(addressField.text), 20), 400, 178, 140, 46);
+            joinLocalButton = Place(RetroUI.Button("JoinLocal", b, "JOIN", () => { if (CanStart) JoinLocal(addressField.text); }, 20), 400, 178, 140, 46);
+
+            // Enter in a field joins, like clicking its JOIN button (focus loss alone doesn't).
+            codeField.onEndEdit.AddListener(async _ => { if (EnterPressed() && CanStart) await JoinOnline(codeField.text); });
+            addressField.onEndEdit.AddListener(_ => { if (EnterPressed() && CanStart) JoinLocal(addressField.text); });
 
             statusText = RetroUI.Readout("Status", b, "Up to 5 players. Host a session, then share the join code.", 17);
             RetroUI.Place((RectTransform)statusText.transform.parent, 20, 250, 520, 140);
@@ -228,7 +372,7 @@ namespace TheDeep.Networking
             var box = RetroUI.Panel("Box", dim.transform, RetroUI.Face, raycast: true);
             var rt = box.rectTransform;
             rt.anchorMin = rt.anchorMax = rt.pivot = new Vector2(0.5f, 0.5f);
-            rt.sizeDelta = new Vector2(480, 300);
+            rt.sizeDelta = new Vector2(480, 360);
             RetroUI.Bevel(rt, raised: true, width: 3);
             var header = RetroUI.Panel("Header", box.transform, RetroUI.TitleBar);
             RetroUI.Place(header.rectTransform, 4, 4, 472, 34);
@@ -237,9 +381,11 @@ namespace TheDeep.Networking
 
             pauseInfo = RetroUI.Readout("Info", box.transform, "", 17);
             RetroUI.Place((RectTransform)pauseInfo.transform.parent, 20, 54, 440, 150);
-            Place(RetroUI.Button("Resume", box.transform, "RESUME", () => SetPaused(false), 18), 20, 226, 136, 50);
-            Place(RetroUI.Button("Settings", box.transform, "SETTINGS", () => OpenSettings(pausePanel), 18), 172, 226, 136, 50);
-            Place(RetroUI.Button("Leave", box.transform, "LEAVE", () => Sessions.Leave(), 18), 324, 226, 136, 50);
+            copyCodeButton = Place(RetroUI.Button("CopyCode", box.transform, "COPY CODE", CopyJoinCode, 16), 20, 216, 200, 40);
+            copyCodeLabel = copyCodeButton.GetComponentInChildren<Text>();
+            Place(RetroUI.Button("Resume", box.transform, "RESUME", () => SetPaused(false), 18), 20, 286, 136, 50);
+            Place(RetroUI.Button("Settings", box.transform, "SETTINGS", () => OpenSettings(pausePanel), 18), 172, 286, 136, 50);
+            leaveLabel = Place(RetroUI.Button("Leave", box.transform, "LEAVE", OnLeaveClicked, 18), 324, 286, 136, 50).GetComponentInChildren<Text>();
             pausePanel.SetActive(false);
         }
 
@@ -247,7 +393,7 @@ namespace TheDeep.Networking
         void OpenSettings(GameObject from)
         {
             from.SetActive(false);
-            settings.Open(() => from.SetActive(from == menuPanel ? !Connected : paused));
+            settings.Open(() => from.SetActive(from == menuPanel ? !InGame : paused));
         }
 
         static void Section(Transform parent, string text, float y)
@@ -256,8 +402,11 @@ namespace TheDeep.Networking
             RetroUI.Place(label.rectTransform, 20, y, 520, 24);
         }
 
-        static void Place(Button button, float x, float y, float w, float h) =>
+        static Button Place(Button button, float x, float y, float w, float h)
+        {
             RetroUI.Place(button.GetComponent<RectTransform>(), x, y, w, h);
+            return button;
+        }
 
         static InputField Field(Transform parent, string placeholder, float x, float y, float w, float h)
         {

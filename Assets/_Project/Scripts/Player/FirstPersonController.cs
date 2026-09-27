@@ -14,12 +14,19 @@ namespace TheDeep.Player
         [SerializeField] float lookSensitivity = 0.08f;
         [SerializeField] float gravity = -20f;
 
+        /// <summary>Why input is locked. Each reason is set and cleared by its own owner, so they don't undo each other.</summary>
+        [System.Flags]
+        public enum Lock { None = 0, Pause = 1, Terminal = 2, View = 4 }
+
         CharacterController controller;
         float pitch;
         float verticalVelocity;
+        Lock locks;
 
-        /// <summary>When true, movement and mouse look are ignored (e.g. while using the terminal).</summary>
-        public bool InputLocked { get; set; }
+        /// <summary>When true, movement and mouse look are ignored (paused, at the terminal, or not in first person).</summary>
+        public bool InputLocked => locks != Lock.None;
+        public bool Has(Lock reason) => (locks & reason) != 0;
+        public void SetLock(Lock reason, bool on) => locks = on ? locks | reason : locks & ~reason;
 
         public static void SetCursorLocked(bool locked)
         {

@@ -37,7 +37,7 @@ namespace TheDeep.Submarine
         public void Interact(PlayerInteractor interactor)
         {
             user = interactor;
-            interactor.Controller.InputLocked = true;
+            interactor.Controller.SetLock(FirstPersonController.Lock.Terminal, true);
             os.SetEventCamera(interactor.EventCamera);
             Transform cam = interactor.Camera.transform;
             if (interactor.Pixelation != null) interactor.Pixelation.FovOverride = SeatedFov;
@@ -71,7 +71,7 @@ namespace TheDeep.Submarine
                 if (leaving.Pixelation != null) leaving.Pixelation.FovOverride = null;
                 cam.localPosition = Vector3.zero;
                 cam.localRotation = Quaternion.identity;
-                leaving.Controller.InputLocked = false;
+                leaving.Controller.SetLock(FirstPersonController.Lock.Terminal, false);
                 user = null;
             }));
         }

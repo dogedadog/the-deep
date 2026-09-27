@@ -17,6 +17,8 @@ namespace TheDeep.Footage
 
         public bool CanInteract(PlayerInteractor interactor)
         {
+            var health = interactor.GetComponent<DiverHealth>();
+            if (health != null && health.IsDead) return false;
             var camera = interactor.GetComponent<HelmetCamera>();
             return (camera != null && camera.HasFootage) || CarriedCount(interactor) > 0;
         }

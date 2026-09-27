@@ -16,6 +16,7 @@ namespace TheDeep.Player
 
         GameObject crosshair;
         Text prompt;
+        DiverHealth health;
 
         public FirstPersonController Controller { get; private set; }
         public Camera Camera => playerCamera;
@@ -28,6 +29,7 @@ namespace TheDeep.Player
         {
             Controller = GetComponent<FirstPersonController>();
             Pixelation = playerCamera.GetComponent<PixelatedCamera>();
+            health = GetComponent<DiverHealth>();
         }
 
         // Start (not Awake) so the HUD is only built for the local player, whose interactor gets enabled.
@@ -35,7 +37,8 @@ namespace TheDeep.Player
 
         void Update()
         {
-            if (Controller.InputLocked)
+            // The dead don't interact, even if a view or pause change briefly frees their input.
+            if (Controller.InputLocked || (health != null && health.IsDead))
             {
                 crosshair.SetActive(false);
                 prompt.text = "";

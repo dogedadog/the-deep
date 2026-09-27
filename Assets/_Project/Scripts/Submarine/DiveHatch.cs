@@ -28,7 +28,11 @@ namespace TheDeep.Submarine
         public bool CanInteract(PlayerInteractor interactor)
         {
             var diver = interactor.GetComponent<DiverController>();
-            return diver != null && diver.IsDiving == (side == Side.Water);
+            if (diver == null || diver.IsDiving != (side == Side.Water)) return false;
+            var health = interactor.GetComponent<DiverHealth>();
+            if (health != null && health.IsDead) return false;
+            // Sealed while the sub is in transit, so nobody drops out at the old station.
+            return side != Side.Cabin || SubNavigation.Instance == null || !SubNavigation.Instance.Travelling;
         }
 
         public void Interact(PlayerInteractor interactor)
