@@ -70,11 +70,15 @@ namespace TheDeep.EditorTools
             Stencil("CHECK YOUR TETHER", t, new Vector3(-3.3f, 1.95f, -1.575f), Quaternion.Euler(0, 180, 0), 0.06f, new Color(0.95f, 0.8f, 0.1f));
             Stencil("NO DIVER LEAVES ALONE", t, new Vector3(-3.3f, 1.85f, -1.575f), Quaternion.Euler(0, 180, 0), 0.04f, new Color(0.9f, 0.9f, 0.85f));
             Stencil("RATED 4000 M", t, new Vector3(4.97f, 2.2f, 0.1f), Quaternion.Euler(0, 90, 0), 0.06f, new Color(0.9f, 0.85f, 0.7f));
-            Stencil("FIRE", t, new Vector3(1.55f, 0.9f, 1.575f), Quaternion.identity, 0.05f, new Color(0.9f, 0.2f, 0.15f));
+            // Above the wainscot (its top is at 0.9), or the lower half is hidden.
+            Stencil("FIRE", t, new Vector3(1.55f, 1.0f, 1.575f), Quaternion.identity, 0.05f, new Color(0.9f, 0.2f, 0.15f));
 
             // Background sound: hum, creaks, drips.
             var ambience = new GameObject("Ambience", typeof(AudioSource), typeof(SubAmbience));
             ambience.transform.SetParent(t, false);
+            // Open water for divers: pressure rumble and moving water.
+            var ocean = new GameObject("OceanAmbience", typeof(AudioSource), typeof(OceanAmbience));
+            ocean.transform.SetParent(t, false);
         }
 
         static void Puddle(Transform t, Vector3 pos, Vector2 size, float angle, Material water)

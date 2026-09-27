@@ -26,6 +26,13 @@ namespace TheDeep.Submarine
             nextBurst = Time.time + Random.Range(secondsBetweenBursts.x, secondsBetweenBursts.y);
         }
 
+        /// <summary>Flicker out right now for <paramref name="seconds"/> (e.g. when the sub lurches into motion).</summary>
+        public void Burst(float seconds)
+        {
+            burstEnd = Time.time + seconds;
+            nextBurst = Mathf.Max(nextBurst, burstEnd + 1f);
+        }
+
         void Update()
         {
             float t = Time.time;
